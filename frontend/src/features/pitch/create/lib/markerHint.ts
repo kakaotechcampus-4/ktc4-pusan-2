@@ -1,14 +1,9 @@
-import {
-  markerNumber,
-  splitLines,
-  type MarkerScan,
-  type NearMarker,
-} from '@/shared/lib/slideMarkers';
+import { markerNumber, splitLines, type MarkerScan, type NearMarker } from './slideMarkers';
 import { MAX_SCRIPT_CHARS } from './draft';
 
 /**
  * 대본 입력 중 안내. 지금 대본대로 매핑하면 어떻게 나뉠지 미리 알려 줍니다.
- * 막지는 않습니다 — 구분처럼 보이지만 인식되지 않는 줄도 안내에만 씁니다 (`shared/lib/slideMarkers` `near`).
+ * 막지는 않습니다 — 구분처럼 보이지만 인식되지 않는 줄도 안내에만 씁니다 (`features/pitch/create/lib/slideMarkers` `near`).
  *
  * 그런 줄의 안내는 **구분이 하나도 없을 때**, 또는 나누는 데 문제가 없는데 첫 구분이 1번이 아닐 때만 냅니다.
  * 첫 구분 앞 · 번호 순서 · 장수 불일치가 먼저입니다 — 앞서면 대본이 제대로 나뉘었는데 장수가 다를 때의

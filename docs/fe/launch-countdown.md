@@ -24,7 +24,7 @@
 - release: `VITE_LAUNCH_GATE_ENABLED=true`, develop-next/dev: `false`를 유지한다.
 - `frontend/Dockerfile`의 같은 이름 `ARG`에 Docker `--build-arg`, Compose `build.args` 또는 Actions `build-args`로 전달한다.
 - Vite 빌드 시 포함되는 값이므로 변경 시 재빌드·재배포한다. 실행 컨테이너 환경변수 변경이나 재시작만으로는 반영되지 않는다.
-- 공개 시각에 변수를 끄거나 FE를 다시 배포할 필요는 없다. 공개 예정 일시 자체를 바꾸려면 `frontend/src/shared/api/launch.ts`를 수정하고 재빌드·재배포한다.
+- 공개 시각에 변수를 끄거나 FE를 다시 배포할 필요는 없다. 공개 예정 일시 자체를 바꾸려면 `frontend/src/features/onboarding/launch.ts`를 수정하고 재빌드·재배포한다.
 - 실제 테스트는 개발 환경에서 진행한다. release에서 로그인하지 않는다. BE·인프라 파일 변경은 이번 작업에 포함하지 않는다.
 
 ## 검증

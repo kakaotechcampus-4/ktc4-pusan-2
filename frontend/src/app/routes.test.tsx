@@ -24,14 +24,14 @@ vi.mock('@/shared/lib/privacyConsent', () => ({
   usePrivacyConsent: () => state.consented,
   recordPrivacyConsent: () => undefined,
 }));
-vi.mock('@/shared/api/launch', () => ({
+vi.mock('@/features/onboarding/launch', () => ({
   useLaunchStatus: () => ({ isOpen: state.launchOpen }),
 }));
 vi.mock('@/features/onboarding/WelcomePage', () => ({ WelcomePage: () => <p>서비스 소개</p> }));
 vi.mock('@/features/auth/LoginPage', () => ({ LoginPage: () => <p>로그인</p> }));
 vi.mock('@/shared/ui/AppHeader', () => ({ AppHeader: () => <header>메뉴</header> }));
-vi.mock('@/features/chat/ChatAgentHost', () => ({ ChatAgentHost: () => null }));
-vi.mock('@/features/pitch/HomePage', () => ({ HomePage: () => <p>내 피치</p> }));
+vi.mock('@/features/chat/ui/ChatAgentHost', () => ({ ChatAgentHost: () => null }));
+vi.mock('@/features/pitch/home/HomePage', () => ({ HomePage: () => <p>내 피치</p> }));
 vi.mock('@/features/rehearsal/stage/RehearsalPage', () => {
   state.stageImports++;
   return { RehearsalPage: () => <p>리허설 {useParams().takeId}</p> };
@@ -39,7 +39,7 @@ vi.mock('@/features/rehearsal/stage/RehearsalPage', () => {
 vi.mock('@/features/rehearsal/prepare/DeviceCheckPage', () => ({
   DeviceCheckPage: () => <p>시작 전 세팅 {useParams().pitchId}</p>,
 }));
-vi.mock('@/features/report/ConfirmPage', () => ({
+vi.mock('@/features/report/analysis/ConfirmPage', () => ({
   ConfirmPage: () => <p>대본 확인 {useParams().takeId}</p>,
 }));
 vi.mock('@/features/info/AboutPage', () => {

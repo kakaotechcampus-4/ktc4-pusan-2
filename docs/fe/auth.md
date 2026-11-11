@@ -1,0 +1,56 @@
+# 로그인 인증 연동 (P11)
+
+## 구현 범위
+
+Google 로그인 페이지 이동 → /login 복귀 → refresh → /api/users/me → 원래 목적지.
+Access Token은 shared/api/tokenStore.ts 메모리에만 보관합니다.
+refresh와 logout은 credentials: include 및 최신 csrf_token의 X-CSRF-Token 헤더를 사용합니다.
+동일 탭의 갱신은 하나의 Promise로 합치며, 늦게 도착한 401은 이미 갱신한 토큰을 사용합니다.
+Web Locks 지원 브라우저에서는 탭 간 쿠키 요청도 직렬화합니다.
+401 갱신 실패는 비로그인 처리, 네트워크/서버 오류는 재시도 안내로 구분합니다.
+로그아웃 성공 시 사용자별 Query 캐시를 비웁니다.
+공용 API 호출은 shared/api/client.ts의 apiRequest를 사용해야 이 처리가 적용됩니다.
+신규 사용자 온보딩 분기는 구현하지 않았습니다.
+
+## 개인정보 처리 동의
+
+로그인한 화면(`RequireSession`)은 모두 개인정보 처리 · 데이터 활용 동의 뒤에 열립니다.
+동의 전에는 가려던 화면 위에 `PrivacyConsentDialog`(모달)를 띄우고, 동의해야만 닫힙니다(Esc · 닫기 없음). 주소는 그대로입니다.
+카메라 · 마이크를 켜는 연습 화면(장치 점검 · 리허설 · 실전)은 동의 전에는 뒤에 그리지 않습니다(`holdUntilConsent`).
+새미나이 런처도 동의 전에는 띄우지 않습니다.
+(BE 미구현) 동의 기록은 사용자별로 이 브라우저(localStorage)에만 남습니다 — `shared/lib/privacyConsent.ts`.
+다른 기기에서는 한 번 더 묻고, 안내문을 고치면 `PRIVACY_CONSENT_VERSION` 을 올려 다시 묻습니다.
+
+## 실행
+
+frontend에서 npm ci, npm run dev 실행 후 /login을 엽니다.
+기본 MSW 환경은 비로그인입니다. Google 버튼은 서버 연결 안내를 표시합니다.
+목 응답으로 실제 로그인한 것으로 표시하지 않습니다.
+
+실서버용 .env.local:
+
+```dotenv
+VITE_USE_MOCK=false
+VITE_API_BASE=http://localhost:8000
+```
+
+프론트는 http://localhost:3000 으로 접속하고 백엔드 FRONTEND_BASE_URL도 이 값으로 맞춥니다.
+localhost와 127.0.0.1을 혼용하면 CSRF 쿠키를 읽지 못합니다.
+운영은 동일 호스트에서 /api를 백엔드로 프록시하며 VITE_API_BASE를 비웁니다.
+백엔드는 Google OAuth 구현 코드, PostgreSQL, Redis 및 Google 클라이언트 설정이 필요합니다.
+GOOGLE_REDIRECT_URI는 Google Console의 허용된 callback URI와 일치해야 합니다.
+.env의 Google secret은 프론트에 넣지 않습니다.
+
+실제 Google 계정 로그인/새로고침/로그아웃, 다중 탭 및 쿠키 정책의 브라우저 검증은
+백엔드 실행 환경 연결 후 수행해야 합니다. 현재 자동 테스트는 모의 HTTP 응답을 사용합니다.
+다른 탭에서의 로그아웃은 이미 발급된 Access Token을 즉시 무효화하지 않습니다.
+
+## 검토 위치
+
+shared/api/: 토큰 보관, 갱신 합류, 재시도 제한, 테스트.
+features/auth/: 화면, 세션 훅, 보호 라우트.
+app/routes.tsx: 공개 경로 이외에 인증 가드 적용.
+mocks/auth.ts: 비로그인 기본 응답.
+
+토큰 모듈은 shared 계층에서 features를 참조하지 않도록 shared/api에 배치했습니다.
+Google 공식 버튼 이미지 출처: https://developers.google.com/identity/branding-guidelines

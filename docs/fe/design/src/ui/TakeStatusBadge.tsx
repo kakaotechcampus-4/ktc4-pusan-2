@@ -1,4 +1,4 @@
-// 제품 `frontend/src/shared/ui/TakeStatusBadge.tsx`에서 복사해 시작했다. 설계서가 관리한다.
+// 제품 `frontend/src/features/report/history/TakeStatusBadge.tsx`에서 복사해 시작했다. 설계서가 관리한다.
 import { Badge, type Tone } from './Badge';
 
 /**

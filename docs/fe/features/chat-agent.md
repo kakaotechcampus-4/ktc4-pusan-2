@@ -4,11 +4,9 @@
 >
 > **한 줄 요약**: 질문을 보내고 실행 상태를 1 · 2초마다 조회해 답을 그리며, 버튼을 띄울지는 BE의 사용 가능 여부가 정합니다.
 >
-> **기준값**: 경로는 `shared/api/chatPaths.ts`, 조회 간격 · 재시도 · 제한 시간은 `chatTransport.ts` · `chatAvailability.ts` · `chatTyping.ts`의 상수가 기준입니다. 8절의 숫자는 그 값을 옮긴 것입니다.
+> **기준값**: 경로는 `features/chat/api/chatPaths.ts`, 조회 간격 · 재시도 · 제한 시간은 `chatTransport.ts` · `chatAvailability.ts` · `chatTyping.ts`의 상수가 기준입니다. 8절의 숫자는 그 값을 옮긴 것입니다.
 
 AI 문서의 절은 "AI 12-4 F3"처럼 가리킵니다. `F`번호는 AI 문서 12-4 "FE 할 일" 표의 번호입니다(예: F1 버튼 · 팝업, F8 오류 · 꺼짐 · 한도 안내, F9 E2E 시험, F15 '기억 없이' 대화). `#123`은 GitHub 이슈 · PR 번호입니다.
-
-> 아래 파일 경로는 지금 `develop-next` 기준입니다. 파일 위치 정리 PR #1151이 합쳐지면 `features/chat/`이 `api/ · rules/ · store/ · ui/` 하위 폴더로 나뉘고, `shared/api/chatPaths.ts`는 `features/chat/api/`로, `shared/lib/chatAgent.ts`는 `features/chat/rules/`로 옮겨집니다. 그때 4절 · 5절 경로를 함께 고칩니다.
 
 | 절 | 내용 |
 |---|---|
@@ -91,50 +89,50 @@ AI 문서의 절은 "AI 12-4 F3"처럼 가리킵니다. `F`번호는 AI 문서 1
 
 ## 4. 폴더 · 주요 파일
 
-모두 `frontend/src/features/chat/` 아래입니다.
+모두 `frontend/src/features/chat/` 아래이고, 하위 폴더 넷으로 나뉩니다 — `api/`(서버 호출 · 경로) · `store/`(대화 상태 · 세션) · `rules/`(응답 검사 · 문구 규칙, React 없음) · `ui/`(화면).
 
 **틀**
 
 | 파일 | 하는 일 |
 |---|---|
-| `ChatAgentHost.tsx` | 버튼 · 사이드 패널 · 메시지 목록. 라우터 최상위 레이아웃(`app/routes.tsx`)에 하나만 둡니다 |
-| `ChatPanelHeader.tsx` | 머리줄. 새 대화 · 대화 목록 · 기억 설정 · 닫기 · '기억 없이' 스위치 |
-| `ChatEmptyState.tsx` | 빈 대화 안내(새미나이 그림 · "새미나이에게 물어보세요") |
-| `ChatAskHelp.tsx` · `askHelpText.ts` | 할 수 있는 일과 눌러서 보내는 질문 예시. 빈 대화 · 거절 답 아래에 같이 씁니다. 문구는 FE가 정했습니다(AI 문서에는 동작만 있음) |
-| `ChatErrorBoundary.tsx` | 대화창이 그리다 오류를 내면 대화만 닫고 안내를 보입니다. 다른 화면은 그대로 둡니다 |
-| `chatRoutes.ts` | 버튼이 보이는 화면 목록 · 버튼 아래 여백 |
+| `ui/ChatAgentHost.tsx` | 버튼 · 사이드 패널 · 메시지 목록. 라우터 최상위 레이아웃(`app/routes.tsx`)에 하나만 둡니다 |
+| `ui/ChatPanelHeader.tsx` | 머리줄. 새 대화 · 대화 목록 · 기억 설정 · 닫기 · '기억 없이' 스위치 |
+| `ui/ChatEmptyState.tsx` | 빈 대화 안내(새미나이 그림 · "새미나이에게 물어보세요") |
+| `ui/ChatAskHelp.tsx` · `rules/askHelpText.ts` | 할 수 있는 일과 눌러서 보내는 질문 예시. 빈 대화 · 거절 답 아래에 같이 씁니다. 문구는 FE가 정했습니다(AI 문서에는 동작만 있음) |
+| `ui/ChatErrorBoundary.tsx` | 대화창이 그리다 오류를 내면 대화만 닫고 안내를 보입니다. 다른 화면은 그대로 둡니다 |
+| `rules/chatRoutes.ts` | 버튼이 보이는 화면 목록 · 버튼 아래 여백 |
 
 **세션 · 통신**
 
 | 파일 | 하는 일 |
 |---|---|
-| `useChatSession.ts` | 대화창 한 세션(로그인 사용자 하나)의 연결 |
-| `chatTransport.ts` | 보내기 · 실행 조회 · 취소 · 승인/거절 · 되돌리기. 조회 간격 · 재시도 규칙(8절) |
-| `chatApi.ts` · `shared/api/chatPaths.ts` | 서버 호출과 경로. 목(`mocks/chat.ts`)도 같은 경로 파일을 봅니다 |
-| `chatAvailability.ts` | 사용 가능 여부 조회 · 재조회 |
+| `store/useChatSession.ts` | 대화창 한 세션(로그인 사용자 하나)의 연결 |
+| `api/chatTransport.ts` | 보내기 · 실행 조회 · 취소 · 승인/거절 · 되돌리기. 조회 간격 · 재시도 규칙(8절) |
+| `api/chatApi.ts` · `api/chatPaths.ts` | 서버 호출과 경로. 목(`mocks/chat.ts`)도 같은 경로 파일을 봅니다 |
+| `api/chatAvailability.ts` | 사용 가능 여부 조회 · 재조회 |
 
 **응답 · 그리기**
 
 | 파일 | 하는 일 |
 |---|---|
-| `chatResponse.ts` · `chatBasis.ts` | 응답 모양 검사 · 근거 칩으로 바꾸기 · 근거 표시와 "최신 아님" |
-| `shared/lib/chatAgent.ts` | 실행 상태가 끝났는지 등 공통 판정. 목(`mocks/chat.ts`)도 씁니다 |
-| `chatGoal.ts` | 목표 카드의 목표 한 줄 만들기(예: "청중 응시 · 3장 · Take 2 31%보다 높게") |
-| `chatTyping.ts` | 글자 효과(받은 문장을 큐로) |
-| `ChatAnswer.tsx` · `ChatChips.tsx` · `ChatCards.tsx` · `chatCardRows.ts` | 답 · 근거 칩 · 카드 |
-| `ChatPanelParts.tsx` · `chatConversations.ts` | 범위 칩 · 대화 목록 |
-| `ChatMemorySettings.tsx` · `ChatMemoryParts.tsx` · `chatMemory.ts` · `useChatMemory.ts` | 기억 설정 · 첫 안내 |
+| `rules/chatResponse.ts` · `rules/chatBasis.ts` | 응답 모양 검사 · 근거 칩으로 바꾸기 · 근거 표시와 "최신 아님" |
+| `rules/chatAgent.ts` | 실행 상태가 끝났는지 등 공통 판정. 목(`mocks/chat.ts`)도 씁니다 |
+| `rules/chatGoal.ts` | 목표 카드의 목표 한 줄 만들기(예: "청중 응시 · 3장 · Take 2 31%보다 높게") |
+| `rules/chatTyping.ts` | 글자 효과(받은 문장을 큐로) |
+| `ui/ChatAnswer.tsx` · `ui/ChatChips.tsx` · `ui/ChatCards.tsx` · `rules/chatCardRows.ts` | 답 · 근거 칩 · 카드 |
+| `ui/ChatPanelParts.tsx` · `api/chatConversations.ts` | 범위 칩 · 대화 목록 |
+| `ui/ChatMemorySettings.tsx` · `ui/ChatMemoryParts.tsx` · `api/chatMemory.ts` · `store/useChatMemory.ts` | 기억 설정 · 첫 안내 |
 
 **안내 · 잠금**
 
 | 파일 | 하는 일 |
 |---|---|
-| `chatNotices.ts` | 상황에 맞는 안내 문구 고르기 |
-| `chatLock.ts` · `useCanSend.ts` · `LockedReason.tsx` | 지금 보낼 수 있는지 · 잠긴 이유(화면 낭독기용) |
+| `rules/chatNotices.ts` | 상황에 맞는 안내 문구 고르기 |
+| `rules/chatLock.ts` · `store/useCanSend.ts` · `ui/LockedReason.tsx` | 지금 보낼 수 있는지 · 잠긴 이유(화면 낭독기용) |
 
 ## 5. BE 계약
 
-경로는 `shared/api/chatPaths.ts` 한 곳에 있고, BE `module/chat/controller.py`에 맞춥니다. 모두 `/api/chat` 아래입니다.
+경로는 `features/chat/api/chatPaths.ts` 한 곳에 있고, BE `module/chat/controller.py`에 맞춥니다. 모두 `/api/chat` 아래입니다.
 
 | 경로 | 쓰는 곳 |
 |---|---|
@@ -215,9 +213,9 @@ AI 문서의 절은 "AI 12-4 F3"처럼 가리킵니다. `F`번호는 AI 문서 1
 
 | 무엇 | 파일 |
 |---|---|
-| 화면 동작(보내기 · 조회 · 카드 · 안내 · 복원) | `ChatAgentHost.test.tsx` |
-| 통신 규칙(간격 · 재시도 · 취소 · 승인) | `chatTransport.test.ts` |
-| 응답 검사 · 근거 칩 | `chatResponse.test.ts` 등 |
+| 화면 동작(보내기 · 조회 · 카드 · 안내 · 복원) | `ui/ChatAgentHost.test.tsx` |
+| 통신 규칙(간격 · 재시도 · 취소 · 승인) | `api/chatTransport.test.ts` |
+| 응답 검사 · 근거 칩 | `rules/chatResponse.test.ts` 등 |
 | 목이 BE 계약과 같은지 | `mocks/chat.contract.test.ts` |
 | 브라우저 끝까지(E2E) | `e2e/chat.e2e.ts` — `npm run test:e2e`. 목 서버를 3100 포트에 새로 띄워 돌립니다 |
 

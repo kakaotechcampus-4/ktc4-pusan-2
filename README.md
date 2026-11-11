@@ -11,22 +11,45 @@
 
 그래서 반복 연습을 설계하고 실제 발표 행동을 측정하며, 그 결과로 사용자의 발표 특성을 파악해 코칭하고 다음 연습에도 반영되도록 하는 피치코치 서비스를 기획하게 되었습니다.
 
+## 기술 스택
+
+| 구분 | 기술 |
+|---|---|
+| FE | ![React](https://img.shields.io/badge/React_18-61DAFB?style=flat-square&logo=react&logoColor=black) ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white) ![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat-square&logo=vite&logoColor=white) ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white) ![React Router](https://img.shields.io/badge/React_Router-CA4245?style=flat-square&logo=reactrouter&logoColor=white) ![TanStack Query](https://img.shields.io/badge/TanStack_Query-FF4154?style=flat-square&logo=reactquery&logoColor=white) ![Zustand](https://img.shields.io/badge/Zustand-443E38?style=flat-square&logoColor=white) ![MediaPipe](https://img.shields.io/badge/MediaPipe-0097A7?style=flat-square&logo=google&logoColor=white) ![MSW](https://img.shields.io/badge/MSW-FF6A33?style=flat-square&logo=mockserviceworker&logoColor=white) ![Vitest](https://img.shields.io/badge/Vitest-6E9F18?style=flat-square&logo=vitest&logoColor=white) ![Playwright](https://img.shields.io/badge/Playwright-2EAD33?style=flat-square&logo=playwright&logoColor=white) |
+| BE | ![Python](https://img.shields.io/badge/Python_3.14-3776AB?style=flat-square&logo=python&logoColor=white) ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white) ![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-D71F00?style=flat-square&logo=sqlalchemy&logoColor=white) ![Alembic](https://img.shields.io/badge/Alembic-6BA81E?style=flat-square&logoColor=white) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL_17-4169E1?style=flat-square&logo=postgresql&logoColor=white) ![Deepgram](https://img.shields.io/badge/Deepgram_STT-13EF93?style=flat-square&logoColor=black) ![pytest](https://img.shields.io/badge/pytest-0A9EDC?style=flat-square&logo=pytest&logoColor=white) ![uv](https://img.shields.io/badge/uv-DE5FE9?style=flat-square&logo=uv&logoColor=white) |
+| AI | ![Python](https://img.shields.io/badge/Python_3.12-3776AB?style=flat-square&logo=python&logoColor=white) ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white) ![LangChain](https://img.shields.io/badge/LangChain-1C3C3C?style=flat-square&logo=langchain&logoColor=white) ![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=flat-square&logo=openai&logoColor=white) ![scikit-learn](https://img.shields.io/badge/scikit--learn-F7931E?style=flat-square&logo=scikitlearn&logoColor=white) ![Kiwi](https://img.shields.io/badge/Kiwi_(kiwipiepy)-4CAF50?style=flat-square&logoColor=white) ![pytest](https://img.shields.io/badge/pytest-0A9EDC?style=flat-square&logo=pytest&logoColor=white) ![uv](https://img.shields.io/badge/uv-DE5FE9?style=flat-square&logo=uv&logoColor=white) |
+| Infra | ![Docker](https://img.shields.io/badge/Docker_Compose-2496ED?style=flat-square&logo=docker&logoColor=white) ![Caddy](https://img.shields.io/badge/Caddy-1F88C0?style=flat-square&logo=caddy&logoColor=white) ![Amazon EC2](https://img.shields.io/badge/Amazon_EC2-FF9900?style=flat-square&logo=amazonec2&logoColor=white) ![Amazon ECR](https://img.shields.io/badge/Amazon_ECR-FF9900?style=flat-square&logo=amazonaws&logoColor=white) ![Amazon S3](https://img.shields.io/badge/Amazon_S3-569A31?style=flat-square&logo=amazons3&logoColor=white) ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white) |
+
 ## 전체 핵심 기능
-- 실제 발표 행동 측정
-    - 목소리 음량, 편차
-    - 군더더기, 발화 사이 침묵 길이와 빈도
-    - 시간 내로 마쳤는지, 얼마나 근접하게 맞췄는지
-- 대본 의존도 파악
-    - 시선 분석
-    - 발화 - 대본 간 유사도 분석
-- Take 데이터를 바탕으로 다음 Take의 미션 제시
-- 발표 맞춤 대화형 에이전트
-    - 이전 발표에 대한 확인
-    - 특정 조건이 변화한 발표에 대한 재평가
-    - 대화에서 연습 화면으로 이동
+
+### 1. 실제 발표 행동 측정
+카메라와 마이크로 받은 Take를 분석해 발표 습관을 수치로 보여 줍니다.
+- **목소리**: 발표 동안의 평균 음량과 음량 편차를 재서, 목소리가 작거나 일정하지 않은 구간을 짚어 줍니다.
+- **말버릇**: 실시간 STT로 받아 적은 발화에서 "음", "어" 같은 군더더기 말을 찾습니다. 발화 사이 침묵이 얼마나 길고 자주 생기는지도 셉니다.
+- **시간 관리**: 정해진 발표 시간 안에 마쳤는지, 목표 시간에 얼마나 가깝게 맞췄는지 확인합니다.
+
+### 2. 대본 의존도 파악
+대본을 얼마나 보고 읽는지 두 가지 방향에서 확인합니다.
+- **시선 분석**: 브라우저에서 얼굴과 시선을 추적해(MediaPipe), 청중 대신 화면이나 대본을 보는 시간을 잽니다.
+- **발화–대본 유사도**: 실제로 한 말과 대본을 비교합니다. 대본을 그대로 읽었는지, 내용을 빠뜨렸는지, 자기 말로 풀어 전달했는지 봅니다.
+
+### 3. Take 기반 다음 연습 미션
+- Take가 끝나면 AI가 측정 결과와 사용자가 고른 평가 기준을 바탕으로 결과 보고서를 만듭니다.
+- 가장 먼저 고치면 좋을 점을 골라 다음 Take에서 수행할 미션으로 제시합니다.
+- 반복 연습하면서 이전 Take보다 나아졌는지 비교할 수 있습니다.
+
+### 4. 발표 맞춤 대화형 에이전트
+지금까지의 발표 기록을 아는 상태에서 대화로 코칭합니다.
+- **이전 발표 확인**: "지난 Take에서 뭐가 부족했어?"처럼 지난 결과를 물어볼 수 있습니다.
+- **조건을 바꾼 재평가**: 발표 시간이나 평가 기준 같은 조건을 바꾸면 결과가 어떻게 달라지는지 다시 평가합니다.
+- **연습 화면으로 이동**: 대화 중에 바로 다음 연습을 시작할 수 있도록 연습 화면으로 안내합니다.
+
 
 ## 시스템 아키텍처 구조도
 <img width="100%" alt="pitch-coach-fe-be-ai-develop-next" src="https://github.com/user-attachments/assets/1994491c-676e-44a2-9fe0-dc3d5393eb43" />
+
+## AI Agent 구조도
+<img width="2608" height="4032" alt="ai-3" src="https://github.com/user-attachments/assets/483ad8f1-4b5e-4c37-b0f1-beba93ce8a5a" />
 
 ## 폴더 구조
 
@@ -243,10 +266,30 @@ feat(be): 로그인 API 구현
 
 ## 역할 구성
 
-| 구분 | 파일 위치 |
-|---|---|
-| PM | 김제원 |
-| FE | 김준수(리드), 안정환 |
-| BE | 정유진(리드), 문여원 |
-| AI | 이서진(리드), 김제원 |
-| Infra | 정유진 |
+<table>
+  <tr>
+    <td align="center"><img src="https://github.com/JWK0395.png" width="100" alt="김제원" /></td>
+    <td align="center"><img src="https://github.com/Kjun03.png" width="100" alt="김준수" /></td>
+    <td align="center"><img src="https://github.com/anjh8370.png" width="100" alt="안정환" /></td>
+    <td align="center"><img src="https://github.com/scholar-star.png" width="100" alt="정유진" /></td>
+    <td align="center"><img src="https://github.com/myeowon.png" width="100" alt="문여원" /></td>
+    <td align="center"><img src="https://github.com/jinn-ie.png" width="100" alt="이서진" /></td>
+  </tr>
+  <tr>
+    <td align="center"><a href="https://github.com/JWK0395">@JWK0395</a></td>
+    <td align="center"><a href="https://github.com/Kjun03">@Kjun03</a></td>
+    <td align="center"><a href="https://github.com/anjh8370">@anjh8370</a></td>
+    <td align="center"><a href="https://github.com/scholar-star">@scholar-star</a></td>
+    <td align="center"><a href="https://github.com/myeowon">@myeowon</a></td>
+    <td align="center"><a href="https://github.com/jinn-ie">@jinn-ie</a></td>
+  </tr>
+  <tr>
+    <td align="center">김제원<br/><sub>PM · AI</sub></td>
+    <td align="center">김준수<br/><sub>FE 리드</sub></td>
+    <td align="center">안정환<br/><sub>FE</sub></td>
+    <td align="center">정유진<br/><sub>BE 리드 · Infra</sub></td>
+    <td align="center">문여원<br/><sub>BE</sub></td>
+    <td align="center">이서진<br/><sub>AI 리드</sub></td>
+  </tr>
+</table>
+

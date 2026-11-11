@@ -1,4 +1,4 @@
-// 제품 `frontend/src/shared/lib/takeStatus.ts`의 문구와 tone. 설계서가 관리한다.
+// 제품 `frontend/src/features/report/history/takeStatus.ts`의 문구와 tone. 설계서가 관리한다.
 import type { Tone } from '@/ui/Badge';
 
 /** Take 상태 배지 여섯 가지. 상태 이름은 BE의 Take status(실패 중 중단은 end_reason) */

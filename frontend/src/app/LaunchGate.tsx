@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Navigate } from 'react-router';
-import { useLaunchStatus } from '@/shared/api/launch';
+import { useLaunchStatus } from '@/features/onboarding/launch';
 
 /** 세션 훅이 실행되기 전에 공개 예정 시각을 확인한다. */
 export function LaunchGate({ children }: { children: ReactNode }) {

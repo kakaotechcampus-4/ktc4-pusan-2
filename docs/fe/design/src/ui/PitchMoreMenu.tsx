@@ -1,4 +1,4 @@
-// 제품 `frontend/src/features/pitch/PitchMoreMenu.tsx`에서 복사해 시작했다. 설계서가 관리한다.
+// 제품 `frontend/src/features/pitch/home/PitchMoreMenu.tsx`에서 복사해 시작했다. 설계서가 관리한다.
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 
 /** 메뉴와 ··· 버튼 사이 (px) */

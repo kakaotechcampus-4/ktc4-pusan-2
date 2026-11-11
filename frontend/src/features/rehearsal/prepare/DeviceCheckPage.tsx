@@ -11,7 +11,7 @@ import { toCalibrationRequest } from '../lib/calibrationRequest';
 import { keepBaseVoice, recallBaseVoice, type RememberedBaseVoice } from '../lib/baseVoiceMemory';
 import { sendCalibration } from '../lib/sendCalibration';
 import { codeMessage, toMessage } from '@/shared/api/errorMessage';
-import { RAW_DATA_CONSENT_FAILED, useEnsureRawDataConsent } from '@/shared/api/rawDataConsent';
+import { RAW_DATA_CONSENT_FAILED, useEnsureRawDataConsent } from '../api/rawDataConsent';
 import { GazeSetupView } from './GazeSetupView';
 import { CheckCard } from './CheckCard';
 import { AudioInputMeter } from './AudioInputMeter';

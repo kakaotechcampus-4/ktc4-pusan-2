@@ -58,6 +58,6 @@ test('개인정보 안내에 동의하기 전후로, 화면에 들어오는 것�
   await page.getByRole('button', { name: '동의하고 시작하기' }).click();
   await expect(page.getByRole('heading', { name: '마이페이지' })).toBeVisible();
 
-  // 켜는 것은 장치 점검의 시작 버튼에서만 합니다 (`shared/api/rawDataConsent.ts`)
+  // 켜는 것은 장치 점검의 시작 버튼에서만 합니다 (`features/rehearsal/api/rawDataConsent.ts`)
   expect(patches).toEqual([]);
 });
