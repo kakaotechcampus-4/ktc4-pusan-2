@@ -739,7 +739,19 @@ class ChatAgentConfig(_Frozen):
     #: 발표 낱말 바로 뒤에 붙어 '그 발표'를 가리키게 하는 조사와, 띄우고 오는 묻는 말. 이것이 아니면('발표할 때' · '발표 트렌드')
     #: 최근 발표를 찾는 말이 아니다('요즘'은 '요즘 발표할 때 …'처럼 일반 고민에 흔해 최근 낱말에서 뺐다)
     #: '로'("가장 최근에 하던 발표로 연습하러 갈래요") · 서술격('였더라' · '이었지' · '인지')도 그 발표를 가리킨다
-    latest_pitch_particles: tuple[str, ...] = ("는", "은", "가", "를", "을", "의", "좀", "로", "였", "이었", "인지")
+    latest_pitch_particles: tuple[str, ...] = (
+        "는",
+        "은",
+        "가",
+        "를",
+        "을",
+        "의",
+        "좀",
+        "로",
+        "였",
+        "이었",
+        "인지",
+    )
     latest_pitch_follow: tuple[str, ...] = (
         "뭐",
         "무엇",
@@ -761,7 +773,14 @@ class ChatAgentConfig(_Frozen):
         "언제",
     )
     #: 리뷰 내용을 묻는 말(Issue #1194 4-E): 물은 Take 의 리뷰가 없다고 확인했고 이 낱말이 있으면 `NO_REVIEW` 문장을 낸다
-    review_question_words: tuple[str, ...] = ("점수", "미션", "리뷰", "우선 개선", "강점", "평가 결과")
+    review_question_words: tuple[str, ...] = (
+        "점수",
+        "미션",
+        "리뷰",
+        "우선 개선",
+        "강점",
+        "평가 결과",
+    )
     goal_question_ask_words: tuple[str, ...] = (
         "?",
         "？",
@@ -812,7 +831,16 @@ class ChatAgentConfig(_Frozen):
     )
     #: 답의 '이번 답에서 확인하지 못했어요'를 다시 평가 카드가 대신할 때(`answer.py` `_action_answers`), 넓은 낱말
     #: (`reassess_request_hints`)만 있는 절은 이 요청 꼴도 있어야 다시 평가 요청으로 본다("Take 4는 평가 기준보다 좋았어"는 주장이다)
-    reassess_request_endings: tuple[str, ...] = ("줘", "주세요", "줄래", "봐", "보자", "하자", "할래", "부탁")
+    reassess_request_endings: tuple[str, ...] = (
+        "줘",
+        "주세요",
+        "줄래",
+        "봐",
+        "보자",
+        "하자",
+        "할래",
+        "부탁",
+    )
     same_condition_words: tuple[str, ...] = (
         "같은 조건",
         "그 조건",

@@ -24,8 +24,8 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, replace
 from collections.abc import Mapping
+from dataclasses import dataclass, replace
 from typing import Any, Literal
 
 from .config import ChatAgentConfig

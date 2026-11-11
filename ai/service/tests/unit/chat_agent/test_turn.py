@@ -874,17 +874,33 @@ def test_take_reviewed_unknown_when_goal_changed() -> None:
     ("change", "status", "sentence"),
     [
         # 대본 판이 다름 → 기준 불일치(끝): 목표를 새로 정하자는 문장(숫자 없음)
-        ({"script_version_id": "sv-other"}, "BASELINE_MISMATCH", "대본이나 평가 기준이 바뀌어 목표를 새로 정해야 해요"),
+        (
+            {"script_version_id": "sv-other"},
+            "BASELINE_MISMATCH",
+            "대본이나 평가 기준이 바뀌어 목표를 새로 정해야 해요",
+        ),
         # 평가 기준 판이 다름 → 같은 문장
-        ({"standard_version": 9}, "BASELINE_MISMATCH", "대본이나 평가 기준이 바뀌어 목표를 새로 정해야 해요"),
+        (
+            {"standard_version": 9},
+            "BASELINE_MISMATCH",
+            "대본이나 평가 기준이 바뀌어 목표를 새로 정해야 해요",
+        ),
         # 목표 계산식 판을 지금 코드가 지원하지 않음 → 새 목표 안내(L4-12)
-        ({"goal_rule_version": "goal-algo-0+000000000000"}, "UNKNOWN", "목표 기준이 바뀌어 새 목표가 필요해요."),
+        (
+            {"goal_rule_version": "goal-algo-0+000000000000"},
+            "UNKNOWN",
+            "목표 기준이 바뀌어 새 목표가 필요해요.",
+        ),
     ],
 )
-def test_take_reviewed_states_each_judgement_without_evidence(change: dict[str, Any], status: str, sentence: str) -> None:
+def test_take_reviewed_states_each_judgement_without_evidence(
+    change: dict[str, Any], status: str, sentence: str
+) -> None:
     """숫자 · 근거가 없는 판정도 판정마다 정한 문장을 낸다. 전에는 근거가 없으면 모두 '확인된 근거만 정리해서 보여 드릴게요.'
     (PARTIAL 안내)로 덮어 기준 불일치 문장이 나올 수 없었다(Issue #1194 독립 평가)."""
-    req = take_reviewed_request(None, take_id="t-6")  # 목표를 저장한 뒤 시작해 리뷰가 끝난 Take(예시 그대로)
+    req = take_reviewed_request(
+        None, take_id="t-6"
+    )  # 목표를 저장한 뒤 시작해 리뷰가 끝난 Take(예시 그대로)
     req["context"]["conversation_goal"].update(change)
     _, _, data = F.run_turn(req, None)
     fd = final_ok(data)
@@ -1568,10 +1584,21 @@ def test_provider_extra_content_on_a_tool_call_is_sent_back_next_round() -> None
     sig = {"google": {"thought_signature": "c2ln"}}
     call = ToolCall(id="g-0", name="get_goals", args={}, raw_args="{}", extra=sig)
     llm = F.FakeLlm(
-        [F.plan(), LlmResult(message=None, tool_calls=[call], finish_reason="tool_calls", model="fake-model"), F.done()],
+        [
+            F.plan(),
+            LlmResult(
+                message=None, tool_calls=[call], finish_reason="tool_calls", model="fake-model"
+            ),
+            F.done(),
+        ],
         answers=[F.answer([])],
         fixes=[F.fix({})],
     )
     F.run_turn(F.request(user_message="대화 목표 있어?"), llm)
-    sent = [m for c in llm.calls[2:] for m in c.messages if m.get("role") == "assistant" and m.get("tool_calls")]
+    sent = [
+        m
+        for c in llm.calls[2:]
+        for m in c.messages
+        if m.get("role") == "assistant" and m.get("tool_calls")
+    ]
     assert sent and sent[0]["tool_calls"][0]["extra_content"] == sig

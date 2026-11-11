@@ -36,7 +36,13 @@ def test_restated_claim_gets_no_unverifiable_sentence() -> None:
     msg = "목소리를 작게 말했다고 하는데 어떻게 하면 크게 말할 수 있을까요?"
     req = F.request(user_message=msg)
     req["history"]["messages"] = [
-        {"role": "user", "text": "최근 발표에서 제 목소리 크기가 어땠나요?", "truncated": False, "basis": None, "stale_reasons": []},
+        {
+            "role": "user",
+            "text": "최근 발표에서 제 목소리 크기가 어땠나요?",
+            "truncated": False,
+            "basis": None,
+            "stale_reasons": [],
+        },
         {"role": "assistant", "text": PREV, "truncated": False, "basis": None, "stale_reasons": []},
     ]
     draft = F.draft(
@@ -76,8 +82,9 @@ def test_merge_result_keeps_the_more_specific_result() -> None:
     chk, seg = templates.PLAN_RESULT["CHECKED"], templates.PLAN_RESULT["SEGMENTS"]
     assert progress.merge_result(chk, seg) == seg
     assert progress.merge_result(seg, chk) == seg
-    assert progress.merge_result(templates.PLAN_RESULT["NO_GUIDES"], templates.PLAN_RESULT["GUIDES"]) == (
-        templates.PLAN_RESULT["GUIDES"]
+    assert (
+        progress.merge_result(templates.PLAN_RESULT["NO_GUIDES"], templates.PLAN_RESULT["GUIDES"])
+        == (templates.PLAN_RESULT["GUIDES"])
     )
     assert progress.merge_result("A", "B") == "A · B"
 
@@ -101,12 +108,23 @@ def test_metric_only_issue_claim_is_judged_by_the_problem_segment() -> None:
     ('확인 불가'가 아니다). 방향이 둘인 말 속도는 낱말이 있어야 한다."""
     from .test_claims import NEG, mk, run, t5
 
-    d = mk("대본 응시 비율이 너무 높은거같아", op="ISSUE", dim="script_independence", metric="script_ratio", polarity=NEG)
+    d = mk(
+        "대본 응시 비율이 너무 높은거같아",
+        op="ISSUE",
+        dim="script_independence",
+        metric="script_ratio",
+        polarity=NEG,
+    )
     with_seg = run(d, t5(issues=[("GAZE_ON_SCRIPT", 3, True)]), focus="take-5")
     assert with_seg.verdict == "SUPPORTED" and "대본 응시" in with_seg.evidence_phrase
     assert run(d, t5(), focus="take-5").verdict == "CONTRADICTED"  # 대본 응시 구간이 없으면 반박
-    pace = mk("말 속도가 너무 이상한 거 같아", op="ISSUE", dim="pacing_rhythm", metric="cpm", polarity=NEG)
-    assert run(pace, t5(issues=[("PACE_FAST", 2, True)]), focus="take-5").reason_code == "NO_ISSUE_WORD"
+    pace = mk(
+        "말 속도가 너무 이상한 거 같아", op="ISSUE", dim="pacing_rhythm", metric="cpm", polarity=NEG
+    )
+    assert (
+        run(pace, t5(issues=[("PACE_FAST", 2, True)]), focus="take-5").reason_code
+        == "NO_ISSUE_WORD"
+    )
 
 
 # ── 읽듯 보는 검토(보정 전 보조 검토)로 찾은 것 ─────────────────────────────────

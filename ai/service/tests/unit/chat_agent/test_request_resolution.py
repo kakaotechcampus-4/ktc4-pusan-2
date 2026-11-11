@@ -38,7 +38,9 @@ SLIDE3 = ("get_take_report", {"take_id": "t-5", "section": "slides", "slide_numb
 
 
 def _gaze_only(r: Any) -> Any:
-    eid = F.find_evidence(r, lambda o: o.get("metric") == "audience_ratio" and o.get("display") == "28%")
+    eid = F.find_evidence(
+        r, lambda o: o.get("metric") == "audience_ratio" and o.get("display") == "28%"
+    )
     return F.answer([F.claim("RECORD", "Take 5 3장 청중 시선은 28%예요.", evidence_ids=[eid])])
 
 
@@ -54,9 +56,7 @@ def test_unread_item_leaves_partial_with_a_todo_step() -> None:
     data = _run([F.tools(SLIDE3, prefix="a")])
     assert data["status"] == "PARTIAL"
     steps = data["plan"]
-    assert any(
-        p["step"] == templates.PLAN_UNRESOLVED and p["status"] == "TODO" for p in steps
-    )
+    assert any(p["step"] == templates.PLAN_UNRESOLVED and p["status"] == "TODO" for p in steps)
     assert data["diagnostics"]["end"]["reason"] == "OTHER"
 
 
@@ -78,7 +78,9 @@ def test_unresolved_step_is_not_added_past_the_step_limit() -> None:
     """할 일 목록이 상한(8단계)으로 차 있으면 '물은 항목 확인' 단계를 더하지 않는다(끝 상태 판단과는 따로)."""
     from pitch_coach_ai.features.chat_agent import progress
 
-    meta = [progress._meta(f"단계 {i}", None) for i in range(7)] + [progress._meta("답 쓰기", "answer")]
+    meta = [progress._meta(f"단계 {i}", None) for i in range(7)] + [
+        progress._meta("답 쓰기", "answer")
+    ]
     for m in meta[:7]:
         m["done"] = True
     assert progress.add_unresolved(meta, 8) is None and len(meta) == 8
@@ -90,7 +92,11 @@ def test_unrelated_none_evidence_does_not_resolve_an_item() -> None:
     msg = MSG + " 대화 목표는 뭐야?"
     req = F.with_loaded(F.request(user_message=msg), "t-5")
     llm = F.FakeLlm(
-        [F.plan(assessments=[GAZE, FILLER]), F.tools(SLIDE3, ("get_goals", {}), prefix="a"), F.done()],
+        [
+            F.plan(assessments=[GAZE, FILLER]),
+            F.tools(SLIDE3, ("get_goals", {}), prefix="a"),
+            F.done(),
+        ],
         answers=[_gaze_only],
     )
     _, _, data = F.run_turn(req, llm)
@@ -112,11 +118,25 @@ def test_advice_question_is_not_counted_as_a_value_question(msg: str, metric: st
     advice = F.draft(msg, type_="REQUEST", claim_op=None, metric=metric, polarity="NEUTRAL")
     req = F.with_loaded(F.request(user_message=msg), "t-5")
     llm = F.FakeLlm(
-        [F.plan(assessments=[advice]), F.tools(("search_guides", {"query": "손 위치"}), prefix="g"), F.done()],
-        answers=[F.answer([F.claim("GENERAL", "손은 편안한 위치에 두고, 강조할 때만 자연스럽게 움직여 보세요.")])],
+        [
+            F.plan(assessments=[advice]),
+            F.tools(("search_guides", {"query": "손 위치"}), prefix="g"),
+            F.done(),
+        ],
+        answers=[
+            F.answer(
+                [
+                    F.claim(
+                        "GENERAL", "손은 편안한 위치에 두고, 강조할 때만 자연스럽게 움직여 보세요."
+                    )
+                ]
+            )
+        ],
     )
     _, _, data = F.run_turn(req, llm)
-    assert not any(p["step"] == templates.PLAN_UNRESOLVED for p in data["plan"])  # 남은 일로 세지 않았다
+    assert not any(
+        p["step"] == templates.PLAN_UNRESOLVED for p in data["plan"]
+    )  # 남은 일로 세지 않았다
     assert data["status"] == "DONE"
 
 
@@ -133,11 +153,17 @@ def test_dimension_state_answers_a_dimension_question() -> None:
 
     def answer(r: Any) -> Any:
         eid = F.find_evidence(r, lambda o: o.get("dimension") == "content_delivery")
-        return F.answer([F.claim("RECORD", "Take 5의 내용 전달은 유지 상태예요.", evidence_ids=[eid])])
+        return F.answer(
+            [F.claim("RECORD", "Take 5의 내용 전달은 유지 상태예요.", evidence_ids=[eid])]
+        )
 
     req = F.with_loaded(F.request(user_message="Take 5 대본 전달은 어땠어?"), "t-5")
     llm = F.FakeLlm(
-        [F.plan(assessments=[ask]), F.tools(("get_take_report", {"take_id": "t-5", "section": "dimensions"})), F.done()],
+        [
+            F.plan(assessments=[ask]),
+            F.tools(("get_take_report", {"take_id": "t-5", "section": "dimensions"})),
+            F.done(),
+        ],
         answers=[answer],
     )
     _, _, data = F.run_turn(req, llm)

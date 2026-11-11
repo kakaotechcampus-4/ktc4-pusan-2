@@ -37,7 +37,6 @@ from . import templates
 from .config import ChatAgentConfig
 from .evidence import EvidenceRegistry, RecordVersion, canonical_json
 from .goals import Comparison, compare_takes, record_read_value
-from .values import volume_base_source
 from .schemas import (
     Assessment,
     AssessmentType,
@@ -55,6 +54,7 @@ from .values import (
     read_dimension_state,
     read_metric,
     read_problems,
+    volume_base_source,
 )
 
 VersionOf = Callable[[TakeSnapshot], RecordVersion]
@@ -471,7 +471,9 @@ def forced_unverifiable_quotes(
 
 
 #: 남의 말 · 앞 답을 되받아 옮기는 꼴('…다고 하는데' · '…라고 하셨는데')
-_REPORTED = re.compile(r"(?:다|라)고\s?(?:하는데|했는데|하셨는데|하시는데|하니|해서|하던데)|(?:다|라)던데")
+_REPORTED = re.compile(
+    r"(?:다|라)고\s?(?:하는데|했는데|하셨는데|하시는데|하니|해서|하던데)|(?:다|라)던데"
+)
 
 
 def restates_previous_answer(quote: str, previous_answer: str | None) -> bool:
@@ -804,9 +806,7 @@ def _script_statement_as_claim(draft: AssessmentDraft) -> AssessmentDraft:
             (
                 t.strip()
                 for t in _SENTENCE_RE.findall(quote)
-                if _SCRIPT_USE_RE.search(t)
-                and _says_past(t)
-                and not _ASK_END_RE.search(t)
+                if _SCRIPT_USE_RE.search(t) and _says_past(t) and not _ASK_END_RE.search(t)
             ),
             "",
         ).rstrip(".!。！")

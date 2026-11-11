@@ -38,7 +38,9 @@ def _lp(reg: EvidenceRegistry, goal: Any = None) -> Any:
     return lp
 
 
-def _ev(reg: EvidenceRegistry, path: str, value: Any, metric: str | None = None, unit: str | None = None) -> str:
+def _ev(
+    reg: EvidenceRegistry, path: str, value: Any, metric: str | None = None, unit: str | None = None
+) -> str:
     return reg.record(
         pitch_id="p-1", take_id="t-5", take_number=5, kind="TAKE_RESULT", revision=1,
         path=path, value=value, metric=metric, unit=unit,
@@ -55,17 +57,25 @@ def test_repeated_fact_is_dropped_but_a_new_evidence_or_value_is_kept() -> None:
     ratio = _ev(reg, "take_result.metrics.script_ratio", 0.32, "script_ratio", "ratio")
     seg = _ev(reg, "problem_segments[area=GAZE,slide_number=7].count", 1)
     g = OutputGuard(_lp(reg))
-    first = Claim(kind="RECORD", text="Take 9의 대본 응시는 32%로 기록됐어요.", evidence_ids=[ratio])
+    first = Claim(
+        kind="RECORD", text="Take 9의 대본 응시는 32%로 기록됐어요.", evidence_ids=[ratio]
+    )
     assert g.admit(first, []) is first
     g.note(first, [])
-    second = Claim(kind="RECORD", text="Take 9의 대본 응시는 32%이고 7장에 대본 응시 구간이 있어요.", evidence_ids=[ratio, seg])
+    second = Claim(
+        kind="RECORD",
+        text="Take 9의 대본 응시는 32%이고 7장에 대본 응시 구간이 있어요.",
+        evidence_ids=[ratio, seg],
+    )
     assert g.admit(second, []) is second  # 새 근거(7장 문제 구간)
     g.note(second, [])
     third = Claim(kind="RECORD", text="Take 9의 대본 응시는 32%예요.", evidence_ids=[ratio])
     assert g.admit(third, []) is None  # 근거 · 값 모두 이미 나감
     other_value = Claim(kind="RECORD", text="Take 9의 대본 응시는 33%예요.", evidence_ids=[ratio])
     assert g.admit(other_value, []) is other_value  # 새 값
-    no_value = Claim(kind="RECORD", text="Take 9의 대본 응시 기록을 다시 봤어요.", evidence_ids=[ratio])
+    no_value = Claim(
+        kind="RECORD", text="Take 9의 대본 응시 기록을 다시 봤어요.", evidence_ids=[ratio]
+    )
     assert g.admit(no_value, []) is no_value  # 값이 없는 문장은 빼지 않는다
     g.log()
     assert g.lp.logged == [("OUTPUT_CHECK", ["DUP_FACT"], "DROPPED")]
@@ -76,7 +86,11 @@ def _unverifiable(reg: EvidenceRegistry) -> tuple[Claim, list[dict[str, Any]]]:
         "assessment_id": "a-1",
         "verdict": "UNVERIFIABLE",
         "evidence_ids": [],
-        "subject": {"dimension": "script_independence", "metric": "script_ratio", "take_ids": ["t-5"]},
+        "subject": {
+            "dimension": "script_independence",
+            "metric": "script_ratio",
+            "take_ids": ["t-5"],
+        },
     }
     claim = Claim(
         kind="ASSESSMENT",
@@ -117,7 +131,9 @@ def test_unverifiable_with_a_criterion_or_unknown_is_left_and_noted(criterion: s
     claim, a = _unverifiable(reg)
     assert g.admit(claim, a) is claim
     g.log()
-    code = "UNVERIFIABLE_CRITERION_UNKNOWN" if criterion == "unknown" else "UNVERIFIABLE_HAS_CRITERION"
+    code = (
+        "UNVERIFIABLE_CRITERION_UNKNOWN" if criterion == "unknown" else "UNVERIFIABLE_HAS_CRITERION"
+    )
     assert g.lp.logged == [("OUTPUT_CHECK", [code], "NOTED")]
 
 
@@ -129,4 +145,6 @@ def test_turn_drops_the_repeated_comparison_and_keeps_lines_and_final_the_same()
     texts = [c["text"] for c in data["message"]["claims"]]
     assert len(texts) == 1 and texts[0].startswith("말씀하신")
     assert_prefix_invariant(lines, data)
-    assert [d[:3] for d in decisions(log) if d[0] == "OUTPUT_CHECK"] == [("OUTPUT_CHECK", "DROPPED", "CODE")] * 2
+    assert [d[:3] for d in decisions(log) if d[0] == "OUTPUT_CHECK"] == [
+        ("OUTPUT_CHECK", "DROPPED", "CODE")
+    ] * 2

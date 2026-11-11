@@ -480,8 +480,12 @@ def attach(
             (
                 j
                 for j, m in enumerate(meta)
-                if m["ran"] == run.tool and run.tool in _MERGED_TOOLS and m.get("take") == run.take
-                and m["done"] and run.done and m["result"] not in _SEPARATE_RESULTS
+                if m["ran"] == run.tool
+                and run.tool in _MERGED_TOOLS
+                and m.get("take") == run.take
+                and m["done"]
+                and run.done
+                and m["result"] not in _SEPARATE_RESULTS
             ),
             None,
         )
@@ -519,7 +523,11 @@ def attach(
 
 
 #: 한 단계에 이은 실행 결과를 합칠 때 덜 구체적인 결과(다른 결과가 있으면 버린다)
-_PLAIN_RESULTS = (tpl.PLAN_RESULT["CHECKED"], tpl.PLAN_RESULT["GUIDES"], tpl.PLAN_RESULT["NO_GUIDES"])
+_PLAIN_RESULTS = (
+    tpl.PLAN_RESULT["CHECKED"],
+    tpl.PLAN_RESULT["GUIDES"],
+    tpl.PLAN_RESULT["NO_GUIDES"],
+)
 #: 다음 실행을 기다린 사실이라 같은 도구의 다음 실행과 한 단계로 합치지 않는 결과
 _SEPARATE_RESULTS = (tpl.PLAN_RESULT["NOT_LOADED"],)
 #: 같은 대상의 되풀이 실행을 한 단계로 합치는 도구(같은 Take 기록의 여러 절 · 자료 찾기 여러 번 · 목록 다시 보기)

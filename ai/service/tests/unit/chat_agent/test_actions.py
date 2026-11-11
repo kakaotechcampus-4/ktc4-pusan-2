@@ -1712,18 +1712,34 @@ def test_reassess_target_text_keeps_the_exact_number_goal() -> None:
 
 @pytest.mark.parametrize(
     "msg",
-    ["최근 기록을 보고 다음 목표를 잡아 줘", "3장에서 왜 자꾸 시선이 떨어져? 그걸 목표로 잡고 다음 연습 준비해 줘"],
+    [
+        "최근 기록을 보고 다음 목표를 잡아 줘",
+        "3장에서 왜 자꾸 시선이 떨어져? 그걸 목표로 잡고 다음 연습 준비해 줘",
+    ],
 )
 def test_unmeasurable_metric_the_user_did_not_name_goes_back_to_the_model(msg: str) -> None:
     """사용자가 목표 내용을 맡겼거나 다른 지표를 말했는데 모델이 대화 목표로 잴 수 없는 지표를 고르면, '말씀하신 목표는 잴 수
     없어요' 제안 카드 대신 고를 수 있는 지표와 함께 도구 오류로 돌려준다(실사용 흐름 점검 장면 2, Issue #1194)."""
-    p = do("save_goal", {**SAVE_ARGS, "metric": "script_ratio", "authorized_by": "목표"}, message=msg)
-    assert (p.result, p.reason_code, p.card, p.action) == ("TOOL_ERROR", "GOAL_METRIC_NOT_ALLOWED", None, None)
+    p = do(
+        "save_goal", {**SAVE_ARGS, "metric": "script_ratio", "authorized_by": "목표"}, message=msg
+    )
+    assert (p.result, p.reason_code, p.card, p.action) == (
+        "TOOL_ERROR",
+        "GOAL_METRIC_NOT_ALLOWED",
+        None,
+        None,
+    )
     err = p.tool_message["error"]
-    assert err["fields"] == ["metric"] and "audience_ratio" in err["allowed"] and "script_ratio" not in err["allowed"]
+    assert (
+        err["fields"] == ["metric"]
+        and "audience_ratio" in err["allowed"]
+        and "script_ratio" not in err["allowed"]
+    )
 
 
-@pytest.mark.parametrize("msg", ["대본응시비율을 낮추는 걸 목표로 잡아 줘", "대본 응시 비율을 목표로 잡아 줘"])
+@pytest.mark.parametrize(
+    "msg", ["대본응시비율을 낮추는 걸 목표로 잡아 줘", "대본 응시 비율을 목표로 잡아 줘"]
+)
 def test_user_named_metric_ignores_spacing(msg: str) -> None:
     """붙여 쓴 지표 이름("대본응시비율")도 사용자가 그 지표를 말한 것이다. 놓치면 사용자가 정한 목표 대신 모델이 다른 지표를
     고르게 된다(`GOAL_METRIC_NOT_ALLOWED`, Issue #1194 코드 검수)."""
@@ -1762,12 +1778,22 @@ def test_unmeasurable_user_goal_with_null_metric_gets_a_proposal_card() -> None:
     from . import fakes as F
 
     msg = "다음 리허설은 미소 띤 밝은 얼굴로 말하는 걸 목표로 저장해 주세요."
-    call = ("save_goal", {"metric": None, "base_take_id": "t-5", "authorized_by": "목표로 저장해 주세요", "reason": "밝은 표정"})
+    call = (
+        "save_goal",
+        {
+            "metric": None,
+            "base_take_id": "t-5",
+            "authorized_by": "목표로 저장해 주세요",
+            "reason": "밝은 표정",
+        },
+    )
     llm = F.FakeLlm([F.plan(), F.tools(call), F.done()], answers=[F.answer([])], fixes=[F.fix({})])
     _, _, data = F.run_turn(F.request(user_message=msg), llm)
     text = data["message"]["text"]
     cards = data["message"]["cards"]
-    assert data["actions"] == []  # 저장하지 않는다(끝 상태는 모델 답 문장에 달림 — 이 가짜 모델은 문장을 쓰지 않는다)
+    assert (
+        data["actions"] == []
+    )  # 저장하지 않는다(끝 상태는 모델 답 문장에 달림 — 이 가짜 모델은 문장을 쓰지 않는다)
     assert any(c["type"] == "GOAL_PROPOSAL" for c in cards)
     assert templates.SystemText.GOAL_UNMEASURABLE.value in text
 
@@ -1779,8 +1805,9 @@ def test_practice_button_prefers_the_pitch_the_code_picked_over_the_scope() -> N
 
     ctx = make_ctx(base_request())
     b = budget()
-    picked, _, _ = start_practice_action(ctx=ctx, authorized_by="연습하러 갈래요", seq=1, budget=b, pitch_id="p-9")
+    picked, _, _ = start_practice_action(
+        ctx=ctx, authorized_by="연습하러 갈래요", seq=1, budget=b, pitch_id="p-9"
+    )
     scoped, _, _ = start_practice_action(ctx=ctx, authorized_by="연습하러 갈래요", seq=2, budget=b)
     assert picked is not None and picked.args == {"pitch_id": "p-9"}
     assert scoped is not None and scoped.args == {"pitch_id": ctx.scope_pitch_id}
-

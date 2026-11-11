@@ -711,7 +711,11 @@ def _practice_button(lp: Loop, authorized_by: str | None) -> Action | None:
         if found is not None and found[1] is not None:
             latest_id = found[1].pitch_id
     action, card, why = act.start_practice_action(
-        ctx=lp.ctx, authorized_by=authorized_by, seq=lp.st.action_seq, budget=lp.budget, pitch_id=latest_id
+        ctx=lp.ctx,
+        authorized_by=authorized_by,
+        seq=lp.st.action_seq,
+        budget=lp.budget,
+        pitch_id=latest_id,
     )
     # 진단 기록 ACTION 단계(11-5): 버튼 행동이라 승인 확인은 필요 없다(NOT_REQUIRED). 행동을 내면 PROPOSED,
     # 행동 수 한도로 카드만 남기면 DOWNGRADED, 범위가 없어 아무것도 못 내면 DROPPED(#887 리뷰)
@@ -1220,7 +1224,9 @@ def _latest_pitch_claims(lp: Loop, said: list[Claim]) -> list[Claim]:
             text = "'{t}'는 아직 분석이 끝난 Take가 없어요."
             claim = Claim(kind="RECORD", text=text.format(t=p.title), evidence_ids=[count_ev])
             masked = claim.model_copy(update={"text": text.format(t="발표")})
-            if chk.check_claims([masked], registry=ctx.registry, code_sentences={masked.text}, cfg=lp.cfg):
+            if chk.check_claims(
+                [masked], registry=ctx.registry, code_sentences={masked.text}, cfg=lp.cfg
+            ):
                 return None
             return claim
         if head:
@@ -1229,12 +1235,16 @@ def _latest_pitch_claims(lp: Loop, said: list[Claim]) -> list[Claim]:
                 if p.take_count
                 else "아직 분석이 끝난 Take는 없어요."
             )
-            text = f"가장 최근에 연습을 시작한 발표는 '{{t}}'이고, 마지막 연습 시작은 {day[1]}, {tail}"
+            text = (
+                f"가장 최근에 연습을 시작한 발표는 '{{t}}'이고, 마지막 연습 시작은 {day[1]}, {tail}"
+            )
         else:
             text = f"분석이 끝난 Take가 있는 가장 최근 발표는 '{{t}}'이고, 마지막 연습 시작은 {day[1]}이에요."
         claim = Claim(kind="RECORD", text=text.format(t=p.title), evidence_ids=[date_ev, count_ev])
         masked = claim.model_copy(update={"text": text.format(t="발표")})
-        if chk.check_claims([masked], registry=ctx.registry, code_sentences={masked.text}, cfg=lp.cfg):
+        if chk.check_claims(
+            [masked], registry=ctx.registry, code_sentences={masked.text}, cfg=lp.cfg
+        ):
             return None
         return claim
 
@@ -1274,7 +1284,9 @@ def _latest_only(lp: Loop) -> bool:
     return len(parts) == 1 and latest_pitch_question(parts[0], lp.cfg)
 
 
-def _none_resolves(lp: Loop, ev: Any, takes: set[int], slide: int | None, metrics: set[str]) -> bool:
+def _none_resolves(
+    lp: Loop, ev: Any, takes: set[int], slide: int | None, metrics: set[str]
+) -> bool:
     """'없음' 근거가 그 항목의 답인가(`_none_target`과 같은 규칙을 항목 하나에): 범위 피치의 Take 0개(범위가 없으면 읽은 피치가
     하나일 때만), 물은 Take 의 리뷰 없음(지표를 묻지 않은 항목만 — 측정값은 리뷰가 없어도 코치 기록에 있다), 물은 Take · 장 ·
     영역의 문제 구간 0곳. 목표 없음 · 거른 조건의 Take 0개 · 이름 검색 0개는 측정 항목의 답이 아니다."""
@@ -1283,7 +1295,10 @@ def _none_resolves(lp: Loop, ev: Any, takes: set[int], slide: int | None, metric
     if kind == "TAKES":
         if ctx.scope_pitch_id is not None:
             return ev.pitch_id == ctx.scope_pitch_id
-        return len({e.pitch_id for e in ctx.registry.items.values() if e.path.endswith(".take_count")}) == 1
+        return (
+            len({e.pitch_id for e in ctx.registry.items.values() if e.path.endswith(".take_count")})
+            == 1
+        )
     if kind not in ("REVIEW", "SEGMENTS") or ev.take_number is None:
         return False
     if takes and ev.take_number not in takes:
@@ -1385,7 +1400,9 @@ def _unresolved_targets(
         quote = str(d.get("quote") or "")
         if d.get("type") != "REQUEST" or not any(w in quote for w in lp.cfg.info_question_words):
             continue
-        if any(w in quote for w in (*lp.cfg.advice_question_words, *lp.cfg.definition_question_words)):
+        if any(
+            w in quote for w in (*lp.cfg.advice_question_words, *lp.cfg.definition_question_words)
+        ):
             continue  # 조언 · 방법 · 뜻을 묻는 말이지 그 항목의 값을 묻는 말이 아니다(답은 자료 · 일반 조언)
         if d.get("quote") in forced or (takes and not takes <= in_scope):
             continue
@@ -2060,10 +2077,14 @@ def _take_reviewed(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -
         # 숫자 · 근거가 없는 판정은 판정마다 정한 코드 문장이다(6-4 판정 순서 · L4-01 · L4-12): 기준이 바뀌면 목표를 새로 정하자는
         # 문장, 계산식 판이 바뀌면 새 목표 안내, 값이 없으면 측정 안 됨, 그 밖(끝까지 안 함 등)은 다음 Take 를 기다린다는 문장.
         # 전에는 근거가 없으면 모두 '확인된 근거만 …'(PARTIAL 안내 문장)으로 덮어 불일치 문장이 나올 수 없었다(Issue #1194 독립 평가)
-        fixed = {
-            "GOAL_RULE_CHANGED": templates.SystemText.GOAL_RULE_CHANGED,
-            "NO_VALUE": templates.SystemText.METRIC_UNMEASURED,
-        }.get(reason) if j.status == "UNKNOWN" else None
+        fixed = (
+            {
+                "GOAL_RULE_CHANGED": templates.SystemText.GOAL_RULE_CHANGED,
+                "NO_VALUE": templates.SystemText.METRIC_UNMEASURED,
+            }.get(reason)
+            if j.status == "UNKNOWN"
+            else None
+        )
         lp.st.cards.append(
             {
                 "type": "GOAL_RESULT",
@@ -2077,7 +2098,10 @@ def _take_reviewed(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -
         if fixed is not None:
             return finish(status="DONE", reason="ANSWERED", system=[fixed], goal_result=gr)
         return finish(
-            status="DONE", reason="ANSWERED", claims=[Claim(kind="SYSTEM", text=text)], goal_result=gr
+            status="DONE",
+            reason="ANSWERED",
+            claims=[Claim(kind="SYSTEM", text=text)],
+            goal_result=gr,
         )
     claim = Claim(kind="RECORD", text=text, evidence_ids=list(j.evidence_ids))
     fails = chk.check_claims([claim], registry=ctx.registry, code_sentences={text}, cfg=lp.cfg)

@@ -40,7 +40,6 @@ from .config import ChatAgentConfig
 from .evidence import canonical_json
 from .goals import build_goal_draft, record_read_value
 from .runctx import RunCtx
-from .tools import arg_problems
 from .schemas import (
     Action,
     ActionResult,
@@ -58,6 +57,7 @@ from .schemas import (
     StartPracticeCard,
     TakeSnapshot,
 )
+from .tools import arg_problems
 from .values import read_dimension_state, read_metric
 
 #: 행동마다 코드에 고정한 자율 등급(6-2). 모델이 바꾸지 못한다
@@ -755,7 +755,9 @@ def _target_text(target: dict[str, Any], cfg: ChatAgentConfig) -> str:
 
 def _user_named_metric(message: str, metric: str, cfg: ChatAgentConfig) -> bool:
     """사용자 말이 그 지표를 직접 말했는가(지표 이름 · 화면 이름). 목표 내용을 맡긴 말인지 가리는 데만 쓴다."""
-    names = {k for k, v in cfg.metric_names.items() if v == metric} | {clm.METRIC_LABEL.get(metric, "")}
+    names = {k for k, v in cfg.metric_names.items() if v == metric} | {
+        clm.METRIC_LABEL.get(metric, "")
+    }
     # 띄어쓰기는 보지 않는다("대본응시비율" · "대본 응시 비율"은 같은 지표를 말한 것)
     flat = "".join(message.split())
     return any(n and "".join(n.split()) in flat for n in names)
@@ -777,7 +779,9 @@ def _propose_goal(
     draft = (
         "UNMEASURABLE_METRIC"
         if a.metric is None
-        else build_goal_draft(base, a.metric, a.slide_number, pitch_id=ctx.scope_pitch_id or "", cfg=cfg)
+        else build_goal_draft(
+            base, a.metric, a.slide_number, pitch_id=ctx.scope_pitch_id or "", cfg=cfg
+        )
     )
     if (
         draft == "UNMEASURABLE_METRIC"
@@ -795,7 +799,9 @@ def _propose_goal(
         )
         tool_message["error"]["fields"] = ["metric"]
         tool_message["error"]["allowed"] = allowed
-        return Proposal(result="TOOL_ERROR", reason_code="GOAL_METRIC_NOT_ALLOWED", tool_message=tool_message)
+        return Proposal(
+            result="TOOL_ERROR", reason_code="GOAL_METRIC_NOT_ALLOWED", tool_message=tool_message
+        )
     review = base.results.review or {}
     dims = review.get("dimensions") or {}
     requested_dim = GOAL_METRIC_DIM.get(a.metric)

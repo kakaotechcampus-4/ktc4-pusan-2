@@ -21,7 +21,7 @@ from pitch_coach_ai.features.chat_agent.turn import _emitted_guides_gone
 
 from . import fakes as F
 from .fixtures import sample_pitch, take_snapshot
-from .test_actions import RA_MSG, ctx_for, do
+from .test_actions import RA_MSG, do
 from .test_turn import fetched_take, resume_request
 
 T = templates.SystemText
@@ -55,11 +55,19 @@ def _cmp(a: str | None, b: str | None) -> Any:
     )
 
 
-@pytest.mark.parametrize(("a", "b"), [("TAKE", "TAKE"), ("CALIBRATION", "TAKE"), ("TAKE", "CALIBRATION")])
+@pytest.mark.parametrize(
+    ("a", "b"), [("TAKE", "TAKE"), ("CALIBRATION", "TAKE"), ("TAKE", "CALIBRATION")]
+)
 def test_volume_take_base_or_different_bases_are_not_comparable(a: str, b: str) -> None:
     c = _cmp(a, b)
     assert c.comparable is False and c.reason == "DIFFERENT_VOLUME_BASE"
-    rec = {"previous": 4, "current": 5, "metric": "voice_diff_db", "slide_number": None, "reason": c.reason}
+    rec = {
+        "previous": 4,
+        "current": 5,
+        "metric": "voice_diff_db",
+        "slide_number": None,
+        "reason": c.reason,
+    }
     assert compose.not_comparable_sentence(rec) == (
         "Take 4 · Take 5 기록은 소리 크기를 견준 기준이 달라 소리 크기를 비교할 수 없어요."
     )
@@ -73,17 +81,28 @@ def test_volume_same_calibration_base_is_compared() -> None:
 # ── R5(a) 기준(targets) 다시 평가를 끈 설정(`reassess_targets=False`)의 동작 ─────────────────────────
 
 
-TARGETS = {"take_id": "t-5", "change": {"targets": [{"metric": "audience_ratio", "operator": "GTE", "value": 0.3}]}}
+TARGETS = {
+    "take_id": "t-5",
+    "change": {"targets": [{"metric": "audience_ratio", "operator": "GTE", "value": 0.3}]},
+}
 
 
 @pytest.mark.no_reassess_targets
 def test_targets_reassess_is_not_proposed_when_switched_off() -> None:
-    p = do("reassess", {**TARGETS, "reason": "내 기준으로"}, message="Take 5 청중 시선 30% 이상 기준으로 다시 평가해 줘")
+    p = do(
+        "reassess",
+        {**TARGETS, "reason": "내 기준으로"},
+        message="Take 5 청중 시선 30% 이상 기준으로 다시 평가해 줘",
+    )
     assert p.action is None and p.reason_code == "TARGETS_NOT_SUPPORTED"
 
 
 def test_script_condition_reassess_is_still_proposed() -> None:
-    p = do("reassess", {"take_id": "t-5", "change": {"script_used": True}, "reason": "대본 사용"}, message=RA_MSG)
+    p = do(
+        "reassess",
+        {"take_id": "t-5", "change": {"script_used": True}, "reason": "대본 사용"},
+        message=RA_MSG,
+    )
     assert p.action is not None and p.action.type == "REASSESS"
 
 
@@ -142,7 +161,9 @@ def test_goal_base_deleted_while_waiting_is_told() -> None:
     req2 = resume_request(req, data, res)
     req2["context"]["removed_sources"] = ["t-4"]
     req2["context"]["conversation_goal"] = None  # BE 가 목표를 비활성화했다
-    req2["context"]["pitch"]["takes"] = [t for t in req2["context"]["pitch"]["takes"] if t["take_id"] != "t-4"]
+    req2["context"]["pitch"]["takes"] = [
+        t for t in req2["context"]["pitch"]["takes"] if t["take_id"] != "t-4"
+    ]
     _, _, data2 = F.run_turn(req2, F.FakeLlm([F.done(), F.answer([])]))
     texts = [c["text"] for c in (data2.get("message") or {}).get("claims") or []]
     assert T.GOAL_BASE_DELETED.value in texts
@@ -216,6 +237,9 @@ def test_emitted_guide_with_a_vanished_card_stops_the_resume() -> None:
 )
 def test_general_usage_word_variants_are_blocked(text: str) -> None:
     fails = check_claims(
-        [Claim(kind="GENERAL", text=text)], registry=EvidenceRegistry("run"), guide_searched=True, cfg=CFG
+        [Claim(kind="GENERAL", text=text)],
+        registry=EvidenceRegistry("run"),
+        guide_searched=True,
+        cfg=CFG,
     )
     assert any(f.check_id == CheckId.GENERAL_RULE and f.unfixable for f in fails)

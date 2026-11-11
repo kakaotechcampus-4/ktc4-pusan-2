@@ -148,10 +148,20 @@ def test_two_comparisons_of_the_same_takes_stay_separate_steps() -> None:
     ctx = make_ctx(req)
     meta = _meta(("두 Take 비교", "compare_takes"), ("답 쓰기", "answer"))
     progress.attach(meta, _read(ctx, "compare_takes", COMPARE), 1, max_steps=8)
-    progress.attach(meta, _read(ctx, "compare_takes", {**COMPARE, "metric": "cpm", "slide_number": None}), 2, max_steps=8)
+    progress.attach(
+        meta,
+        _read(ctx, "compare_takes", {**COMPARE, "metric": "cpm", "slide_number": None}),
+        2,
+        max_steps=8,
+    )
     assert [m["ran"] for m in meta] == ["compare_takes", "compare_takes", None]
     for section in ("dimensions", "problem_segments"):
-        progress.attach(meta, _read(ctx, "get_take_report", {"take_id": "t-5", "section": section}), 3, max_steps=8)
+        progress.attach(
+            meta,
+            _read(ctx, "get_take_report", {"take_id": "t-5", "section": section}),
+            3,
+            max_steps=8,
+        )
     assert [m["ran"] for m in meta].count("get_take_report") == 1
 
 
@@ -281,7 +291,9 @@ def test_slides_read_shows_unmeasured_when_the_asked_area_is_unmeasured() -> Non
     # 전에는 물은 영역이 '모두' 측정 안 됨일 때만 보여 섞인 질문에서 빠졌다)
     mixed = progress.read_run("get_take_report", a, tr, ctx, areas=frozenset({"VOLUME", "GAZE"}))
     assert mixed.result == "목소리 측정 안 됨"
-    assert progress.unmeasured_areas(ctx.snapshots["t-3"], frozenset({"VOLUME", "GAZE"})) == ["VOLUME"]
+    assert progress.unmeasured_areas(ctx.snapshots["t-3"], frozenset({"VOLUME", "GAZE"})) == [
+        "VOLUME"
+    ]
 
 
 # ── 끝 처리 ──────────────────────────────────────────────────────────────────

@@ -108,6 +108,8 @@ def _alt_name(name: str, args: Any) -> str:
         section = getattr(args, "section", None)
         return templates.PLAN_ALT_COACH if section in COACH_SECTIONS else templates.PLAN_ALT_REVIEW
     return templates.PLAN_ALT_NAME.get(name, templates.PLAN_TOOL_NAME.get(name, name))
+
+
 #: 가벼운 말 종류(P-0008 5-1)
 TALK_KINDS = ("GREETING", "THANKS", "CAPABILITY", "PRACTICE_INTENT", "FAREWELL")
 #: '같은 조건으로 다시 평가' 말에서 새 대상 · 조건으로 보는 표기: 숫자(Take · 장 번호 · 기준 값)와 Take 지칭(6-6 되살리기)
@@ -159,7 +161,9 @@ def latest_pitch_question(msg: str | None, cfg: Any) -> bool:
     words = "|".join(re.escape(w) for w in sorted(cfg.latest_pitch_words, key=len, reverse=True))
     verbs = "|".join(re.escape(w) for w in sorted(cfg.latest_pitch_verbs, key=len, reverse=True))
     targets = "|".join(re.escape(w) for w in cfg.latest_pitch_targets)
-    parts = "|".join(re.escape(w) for w in sorted(cfg.latest_pitch_particles, key=len, reverse=True))
+    parts = "|".join(
+        re.escape(w) for w in sorted(cfg.latest_pitch_particles, key=len, reverse=True)
+    )
     follow = "|".join(re.escape(w) for w in cfg.latest_pitch_follow)
     after = rf"(?=(?:{parts})|[?.!,~]|\s*$|\s+(?:{follow}))"
     # 최근 낱말과 발표 낱말 사이: 꾸밈말(`latest_pitch_verbs`) 하나, 또는 문장 부호가 아닌 낱말 세 개까지("가장 최근에 연습을
@@ -171,7 +175,9 @@ def latest_pitch_question(msg: str | None, cfg: Any) -> bool:
         mid = hit.group("mid").split()
         # 사이 낱말이 있으면 연습 이력을 말해야 한다("연습을 시작한" · "하던" · "연습했던 게 어떤"). "최근 들어 발표가 무서워요" ·
         # "최근 친구 발표는 어땠어?"는 아니다(Issue #1194 코드 검수)
-        if not mid or any(t.startswith(_PRACTICE_HINTS) or t in cfg.latest_pitch_verbs for t in mid):
+        if not mid or any(
+            t.startswith(_PRACTICE_HINTS) or t in cfg.latest_pitch_verbs for t in mid
+        ):
             return True
     return False
 
@@ -983,9 +989,12 @@ class Loop:
                 why=why,
             )
             self._emit_plan_display()  # 바뀐 때만 plan 줄을 낸다
-        if run.signal == "REVIEW_MISSING" and run.take is not None:
-            if run.take not in self.st.review_missing:
-                self.st.review_missing.append(run.take)
+        if (
+            run.signal == "REVIEW_MISSING"
+            and run.take is not None
+            and run.take not in self.st.review_missing
+        ):
+            self.st.review_missing.append(run.take)
         if not self.tracking and not self.cfg.code_signal_responses:
             return
         if self.tracking and chosen and name in progress.RECORD_TOOLS:
@@ -1008,9 +1017,7 @@ class Loop:
             return None
         if self.st.plan_meta and progress.pick(self.st.plan_meta, name) is not None:
             return None  # 계획에 그 도구로 할 일이 남아 있다: 계획대로 한 것이지 대안이 아니다
-        sig = next(
-            (s for s in self.st.signals_open if s["seen"] and s["key"] != key), None
-        )
+        sig = next((s for s in self.st.signals_open if s["seen"] and s["key"] != key), None)
         if sig is None:
             return None
         return f"{templates.PLAN_WHY.get(sig['signal'], '')} {_alt_name(name, args)}".strip()
@@ -1027,14 +1034,22 @@ class Loop:
         budget_left = self.cfg.code_signal_reads_max - len(self.st.code_done)
         if sig == "REVIEW_MISSING":
             tid = getattr(args, "take_id", None)
-            tool_room = self.cfg.max_tool_calls - self.counters.tool_calls - sum(
-                1 for q in self.st.code_queue if q["name"] not in ("fetch_take", "fetch_pitch")
+            tool_room = (
+                self.cfg.max_tool_calls
+                - self.counters.tool_calls
+                - sum(
+                    1 for q in self.st.code_queue if q["name"] not in ("fetch_take", "fetch_pitch")
+                )
             )
             queued = 0
             for section in ("problem_segments", "slides"):
                 body = {"take_id": tid, "section": section}
                 ckey = json.dumps(["get_take_report", body], sort_keys=True)
-                if tid is None or ckey in self.st.code_done or queued >= min(budget_left, tool_room):
+                if (
+                    tid is None
+                    or ckey in self.st.code_done
+                    or queued >= min(budget_left, tool_room)
+                ):
                     continue
                 read = validate_args("get_take_report", body)
                 if not isinstance(read, str) and self._is_cached("get_take_report", read):
@@ -1044,11 +1059,19 @@ class Loop:
                 self.st.code_queue.append({"name": "get_take_report", "args": body, "why": why})
                 queued += 1
             if self.tracking:
-                self._decide(sig, run.facts, "ALT_TOOL" if queued else "NONE", "CODE", step=step, tool_seq=tool_seq)
+                self._decide(
+                    sig,
+                    run.facts,
+                    "ALT_TOOL" if queued else "NONE",
+                    "CODE",
+                    step=step,
+                    tool_seq=tool_seq,
+                )
         elif sig == "NOT_LOADED":
             names = ("take_id", "current_take_id", "previous_take_id")
             missing = [
-                t for t in (getattr(args, n, None) for n in names)
+                t
+                for t in (getattr(args, n, None) for n in names)
                 if t and t in self.ctx.summaries and t not in self.ctx.snapshots
             ]
             if not missing or budget_left <= 0:
@@ -1057,9 +1080,15 @@ class Loop:
             fkey = json.dumps(["fetch_take", tid])
             if fkey in self.st.prefetched or fkey in self.st.code_done:
                 return  # 이미 가져오려 했다(실패했으면 다시 내지 않는다)
-            self.st.code_done.append(fkey)  # 선읽기 몫(`prefetched`)은 쓰지 않는다(조사 흐름의 한도와 따로)
+            self.st.code_done.append(
+                fkey
+            )  # 선읽기 몫(`prefetched`)은 쓰지 않는다(조사 흐름의 한도와 따로)
             self.st.code_queue.append(
-                {"name": "fetch_take", "args": {"take_id": tid, "reason": "읽으려던 연습 기록이 기본 자료에 없음"}, "why": None}
+                {
+                    "name": "fetch_take",
+                    "args": {"take_id": tid, "reason": "읽으려던 연습 기록이 기본 자료에 없음"},
+                    "why": None,
+                }
             )
 
     def _decide(
@@ -1438,7 +1467,10 @@ class Loop:
         가져오기를 낸다(Issue #1194 독립 평가 — 모델이 가져오지 않고 '발표를 찾을 수 없어요'로 끝냈다). 같은 이름은 한 번만, 코드
         대응 몫(`code_signal_reads_max`) 안에서. 가져오기가 실패하면 그때 '발표를 찾을 수 없어요'와 대안 · 다음 걸음이 나간다."""
         total = self.ctx.pitches_total or 0
-        if total <= len(self.ctx.pitches) or len(self.st.code_done) >= self.cfg.code_signal_reads_max:
+        if (
+            total <= len(self.ctx.pitches)
+            or len(self.st.code_done) >= self.cfg.code_signal_reads_max
+        ):
             return
         if self._pitch_fetched():
             return
@@ -1447,7 +1479,11 @@ class Loop:
             return
         self.st.code_done.append(fkey)
         self.st.code_queue.append(
-            {"name": "fetch_pitch", "args": {"name": name, "reason": "찾는 발표가 기본 자료의 최근 목록에 없음"}, "why": None}
+            {
+                "name": "fetch_pitch",
+                "args": {"name": name, "reason": "찾는 발표가 기본 자료의 최근 목록에 없음"},
+                "why": None,
+            }
         )
 
     def _code_calls(self) -> list[ToolCall]:
@@ -1595,7 +1631,9 @@ class Loop:
         if not read:
             # 이름 검색 없이 목록을 읽었는데 피치가 하나도 없다: 읽지 않은 것이 아니라 연습을 시작한 피치가 없는 것이다
             # (Issue #1194 독립 평가 — 전에는 None 으로 보아 '아직 연습을 시작한 발표가 없어요.' 대신 PARTIAL 로 끝났다)
-            listed = json.dumps(["list_pitches", {"query": None}], sort_keys=True) in self.st.prefetched or any(
+            listed = json.dumps(
+                ["list_pitches", {"query": None}], sort_keys=True
+            ) in self.st.prefetched or any(
                 m.get("ran") == "list_pitches" for m in self.st.plan_meta
             )
             if listed and not self.ctx.pitches and not (self.ctx.pitches_total or 0):

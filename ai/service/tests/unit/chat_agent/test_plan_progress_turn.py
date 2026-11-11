@@ -467,7 +467,11 @@ def test_plan_edit_result_to_model_is_the_model_list_not_the_merged_screen() -> 
         ("조건 확인", "DOING"),
         ("답 정리", "TODO"),
     ]
-    assert [s["status"] for s in data["plan"]] == ["DONE", "DONE", "DONE"]  # 실행하지 않은 조건 확인은 끝 목록에서 빠짐
+    assert [s["status"] for s in data["plan"]] == [
+        "DONE",
+        "DONE",
+        "DONE",
+    ]  # 실행하지 않은 조건 확인은 끝 목록에서 빠짐
 
 
 def test_research_prompts_do_not_push_update_plan() -> None:
@@ -488,7 +492,9 @@ def test_plan_edit_merge_cuts_new_steps_to_eight() -> None:
     new = [(f"새 단계 {'가나다라마바사'[i]}", None) for i in range(7)]
     lines, data, seen = _ran_two_then_edit(_edit(*new))
     check_stream(lines, data)
-    live = plan_lines(lines)[-2]  # 끝 처리 전 마지막 화면 목록(끝난 답에서는 실행하지 않은 단계를 뺀다)
+    live = plan_lines(lines)[
+        -2
+    ]  # 끝 처리 전 마지막 화면 목록(끝난 답에서는 실행하지 않은 단계를 뺀다)
     steps = [s["step"] for s in live]
     assert len(steps) == 8 and [p["step"] for p in live[:2]] == [p["step"] for p in RAN]
     assert [p["step"] for p in data["plan"]] == [p["step"] for p in RAN]
@@ -722,7 +728,10 @@ def test_take_report_trace_keeps_its_source_in_live_and_final_trace() -> None:
     final = [t["result_summary"] for t in data["trace"]]
     assert final[1].startswith("리뷰 분석 · ") and final[2].startswith("코치가 찾은 것 · ")
     # 같은 Take 기록의 두 절은 한 단계로 잇는다(화면에서 겹쳐 보이지 않게)
-    assert data["plan"][1]["step"] == "기록 보기: Take 5 기록 → 리뷰 우선 개선 청중 시선 · 문제 구간 있음"
+    assert (
+        data["plan"][1]["step"]
+        == "기록 보기: Take 5 기록 → 리뷰 우선 개선 청중 시선 · 문제 구간 있음"
+    )
 
 
 # ── TARGET 1절 예의 꼴 · 목적의 숫자 ─────────────────────────────────────────

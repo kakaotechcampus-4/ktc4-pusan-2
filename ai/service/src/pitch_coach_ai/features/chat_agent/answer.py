@@ -126,7 +126,11 @@ def _action_answers(lp: Any, sentence: str) -> bool:
     답이다(Issue #1194 읽듯 보는 검토 — 다시 평가 카드와 '확인하지 못했어요'가 함께 나와 어긋나 보였다)."""
     pending = lp.st.pending_action or {}
     targets = [
-        *([(pending.get("args") or {}).get("take_id")] if pending.get("type") == "REASSESS" else []),
+        *(
+            [(pending.get("args") or {}).get("take_id")]
+            if pending.get("type") == "REASSESS"
+            else []
+        ),
         *(e.get("take_id") for e in lp.st.executed if e.get("type") == "REASSESS"),
     ]
     if not targets:
@@ -518,7 +522,9 @@ class Composer:
         if not lead_closed:
             return out, flags, code
         if fin.result is not None:
-            uncovered = [s for s in fin.result.uncovered_sentences if not _action_answers(self.lp, s)]
+            uncovered = [
+                s for s in fin.result.uncovered_sentences if not _action_answers(self.lp, s)
+            ]
             for s in [*uncovered, *fin.result.dropped_notice]:
                 add(compose._claim("SYSTEM", s), False)
         # 비교할 수 없다는 도구 결과의 까닭은 코드 문장으로(모델이 근거 없는 까닭 문장을 써서 빠지지 않게, 7-10)

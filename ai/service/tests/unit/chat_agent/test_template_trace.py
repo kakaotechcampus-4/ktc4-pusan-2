@@ -81,7 +81,9 @@ def test_every_fixed_sentence_has_a_test_or_a_listed_reason() -> None:
     corpus = _corpus()
     untested = {n for n, t in _templates().items() if not _tested(n, t, corpus)}
     listed = set(NOT_EMITTED) | set(UNTESTED)
-    assert not (untested - listed), f"시험이 없는 새 고정 문장: {sorted(untested - listed)} — 그 상황을 만드는 시험을 더한다"
+    assert not (untested - listed), (
+        f"시험이 없는 새 고정 문장: {sorted(untested - listed)} — 그 상황을 만드는 시험을 더한다"
+    )
     stale = listed - untested
     assert not stale, f"이제 시험이 있는 문장: {sorted(stale)} — 목록에서 뺀다"
 

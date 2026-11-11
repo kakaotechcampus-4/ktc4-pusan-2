@@ -263,7 +263,9 @@ def arg_problems(
 def validate_args(name: str, args: dict[str, Any] | None) -> BaseModel | InvalidArgs:
     """인자 검사. 통과하면 모델 객체, 아니면 실패 사유 코드(실행하지 않음, L1-15) — 틀린 인자면 칸별 안내(`fields`)를 함께."""
     if name not in P0_TOOLS:
-        return InvalidArgs("UNKNOWN_TOOL", [{"field": None, "problem": "UNKNOWN_TOOL", "expected": list(P0_TOOLS)}])
+        return InvalidArgs(
+            "UNKNOWN_TOOL", [{"field": None, "problem": "UNKNOWN_TOOL", "expected": list(P0_TOOLS)}]
+        )
     if args is None:
         return InvalidArgs("BAD_ARGS", arg_problems(name, args))
     try:

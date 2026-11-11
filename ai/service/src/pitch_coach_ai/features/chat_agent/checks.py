@@ -563,7 +563,9 @@ def _check_record_text(
 
     ex = extract_numbers(text)
     # 0) 날짜: 이은 근거 중 날짜 근거(단위 `date`, 값 'YYYY-MM-DD')의 월 · 일과 같아야 한다(4-A)
-    dates_ok = {str(e.value)[5:10] for e in effective if e.unit == "date" and isinstance(e.value, str)}
+    dates_ok = {
+        str(e.value)[5:10] for e in effective if e.unit == "date" and isinstance(e.value, str)
+    }
     for d in dict.fromkeys(ex.dates):
         if date_value(d) not in dates_ok:
             fail(

@@ -60,7 +60,13 @@ def test_no_record_is_left_to_the_model() -> None:
 
     def answer(r: Any) -> Any:
         return F.answer(
-            [F.claim("RECORD", "'졸업 발표'에는 아직 연습한 Take가 없어요.", evidence_ids=[none_ev(r)])]
+            [
+                F.claim(
+                    "RECORD",
+                    "'졸업 발표'에는 아직 연습한 Take가 없어요.",
+                    evidence_ids=[none_ev(r)],
+                )
+            ]
         )
 
     llm = F.FakeLlm(
@@ -79,6 +85,7 @@ def test_no_record_is_left_to_the_model() -> None:
     assert ("NO_RECORD", "NONE", "LLM") in effects
     assert any("signals" in b for b in research_blocks(llm))
     assert fd.status == "DONE"
+
 
 def test_not_loaded_take_is_fetched_by_code() -> None:
     """모델이 기본 자료에 없는 Take 를 읽으려 하면(NOT_LOADED) 코드가 바로 가져오기를 낸다(NOT_LOADED:ACTION:CODE)."""
@@ -99,7 +106,9 @@ def test_not_loaded_take_is_fetched_by_code() -> None:
 # ── 검수 반영(Opus 5.5): 코드 대응은 덧붙이는 읽기라 한도 · 이미 읽은 기록을 넘지 않는다 ─────────────────────────
 
 
-def _review_missing_run(cfg: Any = None, reads: list[Any] | None = None) -> tuple[Any, list[dict[str, Any]], dict[str, Any]]:
+def _review_missing_run(
+    cfg: Any = None, reads: list[Any] | None = None
+) -> tuple[Any, list[dict[str, Any]], dict[str, Any]]:
     req = F.request(user_message="Take 5 리뷰에서 제일 큰 문제가 뭐였어?")
     req["context"]["pitch"]["focus_take"]["results"]["review"] = None
     review = ("get_take_report", {"take_id": "t-5", "section": "dimensions"})

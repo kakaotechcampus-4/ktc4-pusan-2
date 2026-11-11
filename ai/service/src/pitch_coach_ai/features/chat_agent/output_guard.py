@@ -54,7 +54,12 @@ class OutputGuard:
     def _evidence_ids(self, claim: Claim, assessments: list[dict[str, Any]]) -> set[str]:
         ids = {*claim.evidence_ids}
         if claim.kind == "ASSESSMENT":
-            ids |= {e for a in assessments if a.get("assessment_id") == claim.assessment_id for e in a.get("evidence_ids") or []}
+            ids |= {
+                e
+                for a in assessments
+                if a.get("assessment_id") == claim.assessment_id
+                for e in a.get("evidence_ids") or []
+            }
         return {e["evidence_id"] for e in compose.referenced(self.lp.ctx, sorted(ids))} | ids
 
     def note(self, claim: Claim, assessments: list[dict[str, Any]]) -> None:
@@ -74,7 +79,9 @@ class OutputGuard:
                 self.counts[("DUP_FACT", "DROPPED")] += 1
                 return None
         if claim.kind == "ASSESSMENT" and _UNVERIFIABLE_TAIL in claim.text:
-            a = next((x for x in assessments if x.get("assessment_id") == claim.assessment_id), None)
+            a = next(
+                (x for x in assessments if x.get("assessment_id") == claim.assessment_id), None
+            )
             if a is not None and a.get("verdict") == "UNVERIFIABLE":
                 state = self._criterion(a)
                 if state == "ABSENT":
@@ -99,7 +106,11 @@ class OutputGuard:
         dim = subject.get("dimension")
         takes = set(subject.get("take_ids") or [])
         reg = ctx.registry
-        cur = [ev for eid, ev in reg.items.items() if reg.is_current(eid) and (not takes or ev.take_id in takes or ev.take_id is None)]
+        cur = [
+            ev
+            for eid, ev in reg.items.items()
+            if reg.is_current(eid) and (not takes or ev.take_id in takes or ev.take_id is None)
+        ]
         if not metric or not any(ev.metric == metric and ev.take_id is not None for ev in cur):
             return None
         goal = ctx.goal

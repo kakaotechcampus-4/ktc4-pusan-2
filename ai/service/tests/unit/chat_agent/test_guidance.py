@@ -62,7 +62,9 @@ def test_continue_with_the_same_partial_notice_ends_done() -> None:
     assert fd.status == "DONE"
     texts = _texts(fd)
     assert texts[-2:] == [T.REPEAT_SAME_REASON.value, T.REPEAT_SPLIT.value]
-    assert all(p.status != "TODO" for p in fd.plan)  # 남은 일이 없어 [이어서 확인] 버튼이 붙지 않는다
+    assert all(
+        p.status != "TODO" for p in fd.plan
+    )  # 남은 일이 없어 [이어서 확인] 버튼이 붙지 않는다
 
 
 def test_continue_with_a_different_notice_stays_partial() -> None:
@@ -97,7 +99,15 @@ def _global_not_found(
             return F.answer([])
         # 모델이 '없음' 근거(이름 검색 0개)를 이은 기록 문장을 쓴다(실제 모델이 흔히 쓰는 꼴)
         eid = F.find_evidence(r, lambda o: o.get("value") == 0)
-        return F.answer([F.claim("RECORD", "'창업 경진대회'라는 이름으로 찾은 피치는 0개예요.", evidence_ids=[eid])])
+        return F.answer(
+            [
+                F.claim(
+                    "RECORD",
+                    "'창업 경진대회'라는 이름으로 찾은 피치는 0개예요.",
+                    evidence_ids=[eid],
+                )
+            ]
+        )
 
     llm = F.FakeLlm(
         [F.plan(), F.tools(("list_pitches", {"query": "창업 경진대회"})), F.done()],
@@ -109,8 +119,20 @@ def _global_not_found(
 
 
 PITCHES = [
-    {"pitch_id": "p-1", "title": "졸업 발표", "take_count": 3, "last_practiced_at": "2026-11-01T10:00:00+09:00", "last_review": None},
-    {"pitch_id": "p-2", "title": "투자 설명회", "take_count": 1, "last_practiced_at": "2026-11-08T10:00:00+09:00", "last_review": None},
+    {
+        "pitch_id": "p-1",
+        "title": "졸업 발표",
+        "take_count": 3,
+        "last_practiced_at": "2026-11-01T10:00:00+09:00",
+        "last_review": None,
+    },
+    {
+        "pitch_id": "p-2",
+        "title": "투자 설명회",
+        "take_count": 1,
+        "last_practiced_at": "2026-11-08T10:00:00+09:00",
+        "last_review": None,
+    },
 ]
 
 
@@ -125,7 +147,9 @@ def test_pitch_not_found_offers_existing_titles_then_next_step() -> None:
 
 
 @pytest.mark.parametrize("pitches", [PITCHES, []])
-def test_model_zero_sentence_still_gets_alternatives_and_next_step(pitches: list[dict[str, Any]]) -> None:
+def test_model_zero_sentence_still_gets_alternatives_and_next_step(
+    pitches: list[dict[str, Any]],
+) -> None:
     """모델이 '이름으로 찾은 피치는 0개예요'(없음 근거만 이은 기록 문장)를 써도 그것은 답이 아니라 '안 된다'의 사실이라, 대안 ·
     다음 걸음을 붙인다(Issue #1194 독립 평가 — 전에는 이 문장을 답으로 세어 다음 걸음이 빠졌다)."""
     fd = _global_not_found([], pitches, model_zero=True)
@@ -144,17 +168,26 @@ def test_name_outside_the_base_list_is_fetched_by_name_first() -> None:
     req["context"]["pitches"] = PITCHES
     req["context"]["pitches_total"] = 3
     req["page"] = {"route": "/", "pitch_id": None, "take_id": None, "screen": None}
-    llm = F.FakeLlm([F.plan(), F.tools(("list_pitches", {"query": "창업 경진대회"})), F.done()], answers=[F.answer([])])
+    llm = F.FakeLlm(
+        [F.plan(), F.tools(("list_pitches", {"query": "창업 경진대회"})), F.done()],
+        answers=[F.answer([])],
+    )
     _, _, data = F.run_turn(req, llm)
     fd = FinalData.model_validate(data)
     assert fd.status == "NEEDS_ACTION"
-    assert [(a.type, a.args.get("name"), a.autonomy) for a in fd.actions] == [("FETCH_PITCH", "창업 경진대회", "AUTO")]
-    assert fd.message is None or T.PITCH_NOT_FOUND.value not in _texts(fd)  # 가져오기 전에는 '찾을 수 없다'고 하지 않는다
+    assert [(a.type, a.args.get("name"), a.autonomy) for a in fd.actions] == [
+        ("FETCH_PITCH", "창업 경진대회", "AUTO")
+    ]
+    assert fd.message is None or T.PITCH_NOT_FOUND.value not in _texts(
+        fd
+    )  # 가져오기 전에는 '찾을 수 없다'고 하지 않는다
 
 
 def test_second_same_notice_offers_choices_instead_of_repeating() -> None:
     first = _global_not_found([], PITCHES)
-    history = _history(("user", "'창업 경진대회' 발표 기록 보여 줘"), ("assistant", "\n".join(_texts(first))))
+    history = _history(
+        ("user", "'창업 경진대회' 발표 기록 보여 줘"), ("assistant", "\n".join(_texts(first)))
+    )
     fd = _global_not_found(history, PITCHES)
     texts = _texts(fd)
     assert texts[0] == T.PITCH_NOT_FOUND.value
@@ -183,13 +216,35 @@ def test_pitches_without_finished_takes_are_not_offered() -> None:
     """분석이 끝난 Take 가 없는 피치는 대안 · 예시 질문에 넣지 않는다(볼 기록이 없다). 시간대가 섞여도 최근 순은 시각으로 정한다."""
     pitches = [
         *PITCHES,
-        {"pitch_id": "p-3", "title": "새 발표", "take_count": 0, "last_practiced_at": None, "last_review": None},
-        {"pitch_id": "p-4", "title": "빈 설명회", "take_count": 0, "last_practiced_at": "2026-11-10T10:00:00+09:00", "last_review": None},
-        {"pitch_id": "p-5", "title": "오전 발표", "take_count": 1, "last_practiced_at": "2026-11-08T03:00:00Z", "last_review": None},
+        {
+            "pitch_id": "p-3",
+            "title": "새 발표",
+            "take_count": 0,
+            "last_practiced_at": None,
+            "last_review": None,
+        },
+        {
+            "pitch_id": "p-4",
+            "title": "빈 설명회",
+            "take_count": 0,
+            "last_practiced_at": "2026-11-10T10:00:00+09:00",
+            "last_review": None,
+        },
+        {
+            "pitch_id": "p-5",
+            "title": "오전 발표",
+            "take_count": 1,
+            "last_practiced_at": "2026-11-08T03:00:00Z",
+            "last_review": None,
+        },
     ]
     first = _global_not_found([], pitches)
-    assert _texts(first)[1] == "지금 볼 수 있는 발표는 '오전 발표' · '투자 설명회' · '졸업 발표'예요."
-    history = _history(("user", "'창업 경진대회' 발표 기록 보여 줘"), ("assistant", "\n".join(_texts(first))))
+    assert (
+        _texts(first)[1] == "지금 볼 수 있는 발표는 '오전 발표' · '투자 설명회' · '졸업 발표'예요."
+    )
+    history = _history(
+        ("user", "'창업 경진대회' 발표 기록 보여 줘"), ("assistant", "\n".join(_texts(first)))
+    )
     again = "\n".join(_texts(_global_not_found(history, pitches)))
     assert "새 발표" not in again and "빈 설명회" not in again
 
@@ -204,10 +259,18 @@ def test_measurement_dispute_next_step_only_when_the_answer_has_none() -> None:
     ctx = SimpleNamespace(registry=EvidenceRegistry("run"), cfg=DEFAULT_CONFIG)
     fixed = Claim(kind="SYSTEM", text=T.MEASUREMENT_FIXED.value)
     judged = Claim(kind="RECORD", text="Take 5에서는 시선 문제 구간이 0곳이에요.")
-    got = guidance.follow_up(ctx, message="다시 평가해 줘", history_messages=[], claims=[fixed, judged], status="DONE")
+    got = guidance.follow_up(
+        ctx, message="다시 평가해 줘", history_messages=[], claims=[fixed, judged], status="DONE"
+    )
     assert [c.text for c in got.claims] == [T.NEXT_MEASURE_CHECK.value]
     said = Claim(kind="GENERAL", text="다음 연습에서는 카메라를 눈높이에 두고 다시 확인해 보세요.")
-    got = guidance.follow_up(ctx, message="다시 평가해 줘", history_messages=[], claims=[fixed, judged, said], status="DONE")
+    got = guidance.follow_up(
+        ctx,
+        message="다시 평가해 줘",
+        history_messages=[],
+        claims=[fixed, judged, said],
+        status="DONE",
+    )
     assert got.claims == []
 
 

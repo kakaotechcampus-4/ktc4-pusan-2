@@ -428,7 +428,10 @@ def test_practiced_date_is_korea_time() -> None:
     # UTC 로 온 시각도 한국 시간 날짜로 읽는다(11월 9일 16시 UTC = 11월 10일 01시 KST)
     assert practiced_date("2026-11-09T16:00:00Z") == ("2026-11-10", "11월 10일")
     assert practiced_date("2026-11-10T09:00:00+09:00") == ("2026-11-10", "11월 10일")
-    assert practiced_date("2026-11-10T09:00:00") == ("2026-11-10", "11월 10일")  # 시간대가 없으면 한국 시간
+    assert practiced_date("2026-11-10T09:00:00") == (
+        "2026-11-10",
+        "11월 10일",
+    )  # 시간대가 없으면 한국 시간
     assert practiced_date(None) is None and practiced_date("어제") is None
 
 
@@ -521,7 +524,9 @@ def test_l1_17_take_in_summary_but_not_loaded_is_not_loaded() -> None:
     ctx = make_ctx()
     res, trace = run(ctx, "get_take_report", {"take_id": "t-3", "section": "dimensions"})
     assert (res.ok, res.read_state, res.error["code"]) == (False, "NOT_LOADED", "NOT_LOADED")
-    assert res.result_summary == "아직 불러오지 않음"  # '확인한 것'에 내부 말 '기본 자료'를 쓰지 않는다(Issue #1194)
+    assert (
+        res.result_summary == "아직 불러오지 않음"
+    )  # '확인한 것'에 내부 말 '기본 자료'를 쓰지 않는다(Issue #1194)
     assert res.data is None and "t-3" not in ctx.not_found and ctx.tool_cache == {}
     assert trace.outcome == "ERROR"
 
@@ -857,7 +862,11 @@ def test_get_goals_sources_and_goal_evidence() -> None:
     # 미션 기준값도 근거다(Issue #1194 독립 평가 — '미션 기준 40%'를 말한 문장이 숫자 검사를 통과하게)
     mv = d["missions"]["items"][0]["target"]["value"]
     mev = ctx.registry.get(mv["evidence_id"])
-    assert mv["value"] == 0.4 and mev.value == 0.4 and mev.path == "missions[mission_id=m-7].target.value"
+    assert (
+        mv["value"] == 0.4
+        and mev.value == 0.4
+        and mev.path == "missions[mission_id=m-7].target.value"
+    )
     # 기준값은 측정값이 아니다: 코드가 측정값 문장을 그릴 때 고르지 않는다(코드 검수 — "청중 시선은 40%예요"가 되지 않게)
     from pitch_coach_ai.features.chat_agent import compose
 
@@ -867,7 +876,11 @@ def test_get_goals_sources_and_goal_evidence() -> None:
     from pitch_coach_ai.features.chat_agent import checks as chk
     from pitch_coach_ai.features.chat_agent.schemas import Claim
 
-    said = Claim(kind="RECORD", text="리뷰가 정한 미션은 3장 청중 시선 40% 이상이에요.", evidence_ids=[mev.evidence_id])
+    said = Claim(
+        kind="RECORD",
+        text="리뷰가 정한 미션은 3장 청중 시선 40% 이상이에요.",
+        evidence_ids=[mev.evidence_id],
+    )
     assert chk.check_claims([said], registry=ctx.registry, cfg=ctx.cfg) == []
     assert trace.result_summary == "미션 1 · 기준 0 · 대화 목표 있음"
 

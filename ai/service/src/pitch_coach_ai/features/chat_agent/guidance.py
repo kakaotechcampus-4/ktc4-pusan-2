@@ -122,7 +122,9 @@ def _recent_pitches(ctx: Any) -> list[Any]:
     대안 · 예시 질문으로 권하지 않는다(없는 Take 를 말하지 않게)."""
     floor = datetime.min.replace(tzinfo=UTC)
     seen = [p for p in ctx.pitches if (p.take_count or 0) > 0]
-    return sorted(seen, key=lambda p: (_practiced(p) is not None, _practiced(p) or floor), reverse=True)
+    return sorted(
+        seen, key=lambda p: (_practiced(p) is not None, _practiced(p) or floor), reverse=True
+    )
 
 
 def _recent_takes(ctx: Any) -> list[int]:
@@ -161,7 +163,10 @@ def _first_time(kind: str, ctx: Any) -> list[str]:
         if not titles:
             return [SystemText.NEXT_FIRST_PITCH.value]
         listed = _quote_list(titles)
-        return [f"지금 볼 수 있는 발표는 {listed}{_copula(titles[-1])}.", SystemText.NEXT_PICK_PITCH.value]
+        return [
+            f"지금 볼 수 있는 발표는 {listed}{_copula(titles[-1])}.",
+            SystemText.NEXT_PICK_PITCH.value,
+        ]
     if kind == "TAKE":
         takes = _recent_takes(ctx)[:MAX_CANDIDATES]
         if not takes:

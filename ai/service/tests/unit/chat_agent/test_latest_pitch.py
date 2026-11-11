@@ -37,14 +37,20 @@ def test_extract_dates_are_not_values() -> None:
 def test_date_matches_date_evidence() -> None:
     r = EvidenceRegistry(run_id="run")
     ev = _date_ev(r)
-    ok = Claim(kind="RECORD", text="가장 최근 발표는 11월 10일에 연습했어요.", evidence_ids=[ev.evidence_id])
+    ok = Claim(
+        kind="RECORD",
+        text="가장 최근 발표는 11월 10일에 연습했어요.",
+        evidence_ids=[ev.evidence_id],
+    )
     assert check_claims([ok], registry=r, cfg=CFG) == []
 
 
 def test_wrong_date_fails() -> None:
     r = EvidenceRegistry(run_id="run")
     ev = _date_ev(r)
-    bad = Claim(kind="RECORD", text="가장 최근 발표는 11월 9일에 연습했어요.", evidence_ids=[ev.evidence_id])
+    bad = Claim(
+        kind="RECORD", text="가장 최근 발표는 11월 9일에 연습했어요.", evidence_ids=[ev.evidence_id]
+    )
     fails = check_claims([bad], registry=r, cfg=CFG)
     assert [f.check_id for f in fails] == [CheckId.NUMBER_MISMATCH]
 
@@ -61,7 +67,9 @@ def test_date_without_date_evidence_fails() -> None:
         value=2,
         unit="count",
     )
-    bad = Claim(kind="RECORD", text="11월 10일에 연습한 발표예요.", evidence_ids=[other.evidence_id])
+    bad = Claim(
+        kind="RECORD", text="11월 10일에 연습한 발표예요.", evidence_ids=[other.evidence_id]
+    )
     assert CheckId.NUMBER_MISMATCH in [f.check_id for f in check_claims([bad], registry=r, cfg=CFG)]
 
 
@@ -92,14 +100,22 @@ def _global(message: str, pitches: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _pitch(pid: str, title: str, count: int, at: str | None) -> dict[str, Any]:
-    return {"pitch_id": pid, "title": title, "take_count": count, "last_practiced_at": at, "last_review": None}
+    return {
+        "pitch_id": pid,
+        "title": title,
+        "take_count": count,
+        "last_practiced_at": at,
+        "last_review": None,
+    }
 
 
 def _texts(data: dict[str, Any]) -> list[str]:
     return [c["text"] for c in (data.get("message") or {}).get("claims") or []]
 
 
-def _run(req: dict[str, Any], *, answer_claims: list[Any] | None = None) -> tuple[FinalData, dict[str, Any], Any]:
+def _run(
+    req: dict[str, Any], *, answer_claims: list[Any] | None = None
+) -> tuple[FinalData, dict[str, Any], Any]:
     # 모델은 근거 없는 문장을 쓰고(검사로 빠짐) 고치기도 못 한다 — 코드 문장이 답이어야 한다
     bad = F.claim("RECORD", "가장 최근 발표는 투자 설명회예요.")
     llm = F.FakeLlm(
@@ -153,7 +169,9 @@ def test_latest_pitch_with_finished_takes() -> None:
 @pytest.mark.prefetch
 def test_latest_pitch_title_with_numbers_is_not_dropped() -> None:
     """제목의 숫자(1분기)는 기록 값이 아니다 — 코드 문장이 숫자 검사로 빠지지 않는다."""
-    req = _global("최근 발표 어땠어?", [_pitch("p-9", "1분기 실적 발표", 1, "2026-11-08T09:00:00+09:00")])
+    req = _global(
+        "최근 발표 어땠어?", [_pitch("p-9", "1분기 실적 발표", 1, "2026-11-08T09:00:00+09:00")]
+    )
     fd, data, _ = _run(req)
     assert fd.status == "DONE"
     assert _texts(data)[0].startswith("가장 최근에 연습을 시작한 발표는 '1분기 실적 발표'이고")
@@ -251,7 +269,9 @@ PITCHES_0 = [
     _pitch("p-1", "졸업 발표", 3, "2026-11-01T10:00:00+09:00"),
 ]
 HEAD_0 = "가장 최근에 연습을 시작한 발표는 '투자 설명회'이고, 마지막 연습 시작은 11월 10일, 아직 분석이 끝난 Take는 없어요."
-EXTRA_0 = "분석이 끝난 Take가 있는 가장 최근 발표는 '졸업 발표'이고, 마지막 연습 시작은 11월 1일이에요."
+EXTRA_0 = (
+    "분석이 끝난 Take가 있는 가장 최근 발표는 '졸업 발표'이고, 마지막 연습 시작은 11월 1일이에요."
+)
 
 
 @pytest.mark.prefetch
@@ -260,7 +280,9 @@ def test_answer_failure_with_another_request_is_partial_with_the_latest_sentence
     from pitch_coach_ai.features.chat_agent.llm_types import LlmCallFailed
 
     req = _global("가장 최근에 한 발표 뭐야? 그리고 긴장 줄이는 법도 알려줘", PITCHES_0)
-    llm = F.FakeLlm([F.plan(steps=DEV_STEPS), F.done()], answers=[LlmCallFailed(attempts=1, usage=[])])
+    llm = F.FakeLlm(
+        [F.plan(steps=DEV_STEPS), F.done()], answers=[LlmCallFailed(attempts=1, usage=[])]
+    )
     _, _, data = F.run_turn(req, llm)
     assert data["status"] == "PARTIAL"
     assert _texts(data)[:2] == [HEAD_0, EXTRA_0]
@@ -271,7 +293,9 @@ def test_answer_failure_on_the_latest_question_alone_is_done() -> None:
     from pitch_coach_ai.features.chat_agent.llm_types import LlmCallFailed
 
     req = _global("가장 최근에 한 발표 뭐야?", PITCHES_0)
-    llm = F.FakeLlm([F.plan(steps=DEV_STEPS), F.done()], answers=[LlmCallFailed(attempts=1, usage=[])])
+    llm = F.FakeLlm(
+        [F.plan(steps=DEV_STEPS), F.done()], answers=[LlmCallFailed(attempts=1, usage=[])]
+    )
     _, _, data = F.run_turn(req, llm)
     assert data["status"] == "DONE"
     assert _texts(data)[:2] == [HEAD_0, EXTRA_0]
@@ -282,8 +306,12 @@ def test_model_sentence_calling_another_pitch_latest_is_dropped() -> None:
     """모델이 다른 피치(졸업 발표)의 목록 근거로 '가장 최근'이라 쓴 문장은 버리고, 코드가 정한 대상의 문장만 나간다."""
 
     def answer(r: Any) -> Any:
-        eid = F.find_evidence(r, lambda o: o.get("value") == 3)  # 졸업 발표(p-1)의 분석이 끝난 Take 수 근거
-        return F.answer([F.claim("RECORD", "가장 최근에 연습한 발표는 '졸업 발표'예요.", evidence_ids=[eid])])
+        eid = F.find_evidence(
+            r, lambda o: o.get("value") == 3
+        )  # 졸업 발표(p-1)의 분석이 끝난 Take 수 근거
+        return F.answer(
+            [F.claim("RECORD", "가장 최근에 연습한 발표는 '졸업 발표'예요.", evidence_ids=[eid])]
+        )
 
     req = _global("가장 최근에 한 발표 뭐야?", PITCHES_0)
     llm = F.FakeLlm([F.plan(steps=DEV_STEPS), F.done()], answers=[answer], fixes=[F.fix({0: None})])
@@ -300,13 +328,23 @@ def test_model_citing_the_latest_date_still_gets_the_finished_pitch_sentence() -
 
     def answer(r: Any) -> Any:
         eid = F.find_evidence(r, lambda o: o.get("value") == "11월 10일")
-        return F.answer([F.claim("RECORD", "가장 최근 발표는 11월 10일에 시작한 '투자 설명회'예요.", evidence_ids=[eid])])
+        return F.answer(
+            [
+                F.claim(
+                    "RECORD",
+                    "가장 최근 발표는 11월 10일에 시작한 '투자 설명회'예요.",
+                    evidence_ids=[eid],
+                )
+            ]
+        )
 
     req = _global("가장 최근에 한 발표 뭐야?", PITCHES_0)
     llm = F.FakeLlm([F.plan(steps=DEV_STEPS), F.done()], answers=[answer])
     _, _, data = F.run_turn(req, llm)
     texts = _texts(data)
-    assert HEAD_0 in texts  # 첫 문장이 분석이 끝난 Take 가 없다는 사실까지 말한다(path-glob-latest-unfinished)
+    assert (
+        HEAD_0 in texts
+    )  # 첫 문장이 분석이 끝난 Take 가 없다는 사실까지 말한다(path-glob-latest-unfinished)
     assert EXTRA_0 in texts
 
 
@@ -316,9 +354,17 @@ def test_model_citing_date_and_count_gets_no_extra_zero_sentence() -> None:
 
     def answer(r: Any) -> Any:
         day = F.find_evidence(r, lambda o: o.get("value") == "11월 10일")
-        cnt = F.find_evidence(r, lambda o: o.get("value") == 0)  # 첫 줄 '투자 설명회'의 분석이 끝난 Take 수
+        cnt = F.find_evidence(
+            r, lambda o: o.get("value") == 0
+        )  # 첫 줄 '투자 설명회'의 분석이 끝난 Take 수
         return F.answer(
-            [F.claim("RECORD", "가장 최근 발표는 11월 10일에 시작한 '투자 설명회'이고 분석이 끝난 Take는 0개예요.", evidence_ids=[day, cnt])]
+            [
+                F.claim(
+                    "RECORD",
+                    "가장 최근 발표는 11월 10일에 시작한 '투자 설명회'이고 분석이 끝난 Take는 0개예요.",
+                    evidence_ids=[day, cnt],
+                )
+            ]
         )
 
     req = _global("가장 최근에 한 발표 뭐야?", PITCHES_0)
@@ -338,7 +384,13 @@ def test_model_citing_both_dates_still_gets_the_finished_pitch_sentence() -> Non
         latest = F.find_evidence(r, lambda o: o.get("value") == "11월 10일")
         done = F.find_evidence(r, lambda o: o.get("value") == "11월 1일")
         return F.answer(
-            [F.claim("RECORD", "가장 최근 발표는 11월 10일에 시작했고, 다른 발표는 11월 1일에 시작했어요.", evidence_ids=[latest, done])]
+            [
+                F.claim(
+                    "RECORD",
+                    "가장 최근 발표는 11월 10일에 시작했고, 다른 발표는 11월 1일에 시작했어요.",
+                    evidence_ids=[latest, done],
+                )
+            ]
         )
 
     req = _global("가장 최근에 한 발표 뭐야?", PITCHES_0)

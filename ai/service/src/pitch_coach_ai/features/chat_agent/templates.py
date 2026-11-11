@@ -132,7 +132,9 @@ class SystemText(StrEnum):
     NEXT_AFTER_REVIEW = "리뷰가 끝나면 점수와 미션도 같이 볼 수 있어요."
     NEXT_ASK_FORM = "궁금한 Take와 항목을 함께 말씀해 주시면 바로 확인할게요."
     #: 측정값 이의(`MEASUREMENT_FIXED`) 뒤 — 답에 다음 Take · 연습에서 확인할 방법이 없을 때만
-    NEXT_MEASURE_CHECK = "자리나 장치를 바꿨다면 다음 Take에서 같은 항목이 달라지는지 확인해 볼 수 있어요."
+    NEXT_MEASURE_CHECK = (
+        "자리나 장치를 바꿨다면 다음 Take에서 같은 항목이 달라지는지 확인해 볼 수 있어요."
+    )
     #: 두 번째 같은 안내의 선택지 머리말(뒤에 예시 질문을 이어 한 문장으로 낸다)
     CHOICES_HEADER = "이렇게 물어보시면 바로 확인할 수 있어요:"
     #: [이어서 확인] 반복 막기(4-C): 같은 안내 유형의 PARTIAL 이 이어질 때

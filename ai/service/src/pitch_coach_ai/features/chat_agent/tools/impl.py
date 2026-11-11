@@ -148,7 +148,9 @@ def _not_loaded(name: str, what: str, args_summary: str) -> ToolResult:
         },
         read_state="NOT_LOADED",
         args_summary=args_summary,
-        result_summary=PLAN_RESULT["NOT_LOADED"],  # '확인한 것'에 보이는 글: 내부 말 '기본 자료' 대신 할 일 단계와 같은 말
+        result_summary=PLAN_RESULT[
+            "NOT_LOADED"
+        ],  # '확인한 것'에 보이는 글: 내부 말 '기본 자료' 대신 할 일 단계와 같은 말
         cacheable=False,
     )
 
@@ -1000,7 +1002,9 @@ def report_source(sections: Sequence[str]) -> str:
 
 def _compare(ctx: RunCtx, a: CompareArgs) -> ToolResult:
     # 도구 기록에는 아는 지표 이름만 쓴다(모델이 metric 에 사용자 원문을 넣어도 진행 줄에 나오지 않게, L1-09)
-    metric_label = METRIC_LABEL.get(a.metric, a.metric) if a.metric in ctx.cfg.metric_units else "모르는 지표"
+    metric_label = (
+        METRIC_LABEL.get(a.metric, a.metric) if a.metric in ctx.cfg.metric_units else "모르는 지표"
+    )
     summ = "Take 비교 · " + metric_label + (f" · {a.slide_number}장" if a.slide_number else "")
     if a.metric not in ctx.cfg.metric_units:
         # 모르는 지표는 실행하지 않고, 받은 글을 결과에 되돌려 주지 않는다(5-7 엄격한 인자 · L1-09)
