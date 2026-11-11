@@ -115,8 +115,7 @@ export function NotFoundScreen({ onNavigate }: ScreenProps) {
 const muted = 'text-sm leading-relaxed text-stone';
 
 /** 마이페이지(`/me`). 상단바 아래에 놓여 로고 줄이 없다 */
-export function MyScreen({ stateId }: ScreenProps) {
-  const consented = stateId === 'consented';
+export function MyScreen() {
   return (
     <Frame title="마이페이지">
       <Card title="계정">
@@ -137,23 +136,12 @@ export function MyScreen({ stateId }: ScreenProps) {
           기록은 리포트를 만든 뒤 지워요(분석에 실패한 연습은 7일 뒤).
         </p>
         <label className="flex min-h-11 items-center gap-3 text-sm font-bold">
-          <input
-            type="checkbox"
-            checked={consented}
-            disabled
-            readOnly
-            className="size-4 shrink-0 accent-ink"
-          />
+          <input type="checkbox" checked disabled readOnly className="size-4 shrink-0 accent-ink" />
           연습 기록을 남겨 다시 분석하는 데 동의해요
         </label>
         <span className="text-xs text-stone">
-          지금은 테스트 기간이라 연습을 시작할 때 이 설정을 켜고, 바꿀 수 없어요.
+          지금은 테스트 기간이라 이 설정이 켜져 있고, 바꿀 수 없어요.
         </span>
-        {!consented && (
-          <span className="text-xs text-stone">
-            아직 꺼져 있어요. 다음 연습을 시작할 때 켜져요.
-          </span>
-        )}
       </Card>
 
       <Card title="이 브라우저의 기록">

@@ -72,7 +72,7 @@ export function MyPage() {
           연습 기록을 남겨 다시 분석하는 데 동의해요
         </label>
         <span className="text-xs text-stone">
-          지금은 테스트 기간이라 연습을 시작할 때 이 설정을 켜고, 바꿀 수 없어요.
+          지금은 테스트 기간이라 이 설정이 켜져 있고, 바꿀 수 없어요.
         </span>
       </Card>
 
