@@ -42,7 +42,13 @@ const PLACEHOLDER = [
   '처음에 저희가 마주한 문제는 …',
 ].join('\n');
 
-const SCRIPT_MARKER_EXAMPLES = ['[N]', '[슬라이드 N]', '슬라이드 N:', 'Slide N', '## Slide N — 제목'];
+const SCRIPT_MARKER_EXAMPLES = [
+  '[N]',
+  '[슬라이드 N]',
+  '슬라이드 N:',
+  'Slide N',
+  '## Slide N — 제목',
+];
 
 function mapLabel(pending: boolean): string {
   return pending ? '나누는 중…' : '대본 매핑';
