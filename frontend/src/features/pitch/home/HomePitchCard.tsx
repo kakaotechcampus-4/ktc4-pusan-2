@@ -90,7 +90,7 @@ export function HomePitchCard({
           to={demo ? '/pitch/tutorial' : editTo}
           aria-label={`${pitch.pitch_title} 발표 준비`}
           size="sm"
-          className="shrink-0 border-transparent! shadow-none! outline-1 outline-ink"
+          className="shrink-0 border-transparent! outline-1 outline-ink"
         >
           발표 준비
         </ButtonLink>

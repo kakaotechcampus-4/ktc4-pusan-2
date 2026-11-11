@@ -42,6 +42,14 @@ const PLACEHOLDER = [
   '처음에 저희가 마주한 문제는 …',
 ].join('\n');
 
+const SCRIPT_MARKER_EXAMPLES = [
+  '[N]',
+  '[슬라이드 N]',
+  '슬라이드 N:',
+  'Slide N',
+  '## Slide N — 제목',
+];
+
 function mapLabel(pending: boolean): string {
   return pending ? '나누는 중…' : '대본 매핑';
 }
@@ -282,11 +290,24 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
         />
       </div>
 
-      <p id={formatHintId} className="mt-3 border-t border-line pt-3 text-sm text-ink/80">
-        슬라이드마다 “[N]” · “[슬라이드 N]” · “슬라이드 N:” · “Slide N” 같은 구분을 새 줄 맨 앞에
-        적어 주세요. “## Slide N — 제목”처럼 # 제목 표시를 붙여도 돼요. 번호는 1부터 차례로 커져야
-        해요. 구분이 없으면 대본 전체가 한 슬라이드로 연결돼요.
-      </p>
+      <div id={formatHintId} className="mt-3 border-t border-line pt-3 text-sm text-ink/80">
+        <p className="mb-2 font-bold text-ink">슬라이드 구분자 안내</p>
+        <p>슬라이드마다 아래 구분자 중 하나를 새 줄 맨 앞에 적어 주세요.</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {SCRIPT_MARKER_EXAMPLES.map((marker) => (
+            <code
+              key={marker}
+              className="inline-block max-w-full rounded-md border border-line-strong bg-panel px-2.5 py-1 font-mono text-xs font-semibold text-ink [overflow-wrap:anywhere]"
+            >
+              {marker}
+            </code>
+          ))}
+        </div>
+        <p className="mt-2">
+          N은 슬라이드 번호예요. 1부터 순서대로 적어 주세요. 구분이 없으면 대본 전체가 한 슬라이드로
+          연결돼요.
+        </p>
+      </div>
     </div>
   );
 }
