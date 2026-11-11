@@ -808,6 +808,9 @@ class ChatAgentConfig(_Frozen):
         "매기",
         "계산",
     )
+    #: 답의 '이번 답에서 확인하지 못했어요'를 다시 평가 카드가 대신할 때(`answer.py` `_action_answers`), 넓은 낱말
+    #: (`reassess_request_hints`)만 있는 절은 이 요청 꼴도 있어야 다시 평가 요청으로 본다("Take 4는 평가 기준보다 좋았어"는 주장이다)
+    reassess_request_endings: tuple[str, ...] = ("줘", "주세요", "줄래", "봐", "보자", "하자", "할래", "부탁")
     same_condition_words: tuple[str, ...] = (
         "같은 조건",
         "그 조건",

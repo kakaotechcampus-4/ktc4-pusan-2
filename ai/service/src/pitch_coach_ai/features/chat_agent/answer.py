@@ -124,11 +124,28 @@ def with_prefix(emitted: list[dict[str, Any]], claims: list[Claim]) -> list[Clai
 def _action_answers(lp: Any, sentence: str) -> bool:
     """덮이지 않은 절의 '확인하지 못했어요' 문장이 이 실행이 낸 다시 평가 요청이면 붙이지 않는다: 확인 카드 · 행동 결과가 그 절의
     답이다(Issue #1194 읽듯 보는 검토 — 다시 평가 카드와 '확인하지 못했어요'가 함께 나와 어긋나 보였다)."""
-    acted = (lp.st.pending_action or {}).get("type") == "REASSESS" or any(
-        e.get("type") == "REASSESS" for e in lp.st.executed
-    )
-    # 다시 평가 행동을 낼 때와 같은 요청 판별 낱말로 본다('다시 확인해줘' · '반영해 줘'도, 실사용 흐름 점검 장면 4)
-    return acted and any(w in sentence for w in (*lp.cfg.reassess_request_words, *lp.cfg.reassess_request_hints))
+    pending = lp.st.pending_action or {}
+    targets = [
+        *([(pending.get("args") or {}).get("take_id")] if pending.get("type") == "REASSESS" else []),
+        *(e.get("take_id") for e in lp.st.executed if e.get("type") == "REASSESS"),
+    ]
+    if not targets:
+        return False
+    cfg = lp.cfg
+    # 다시 평가 행동을 낼 때와 같은 요청 판별 낱말로 본다('다시 확인해줘' · '반영해 줘'도, 실사용 흐름 점검 장면 4). 넓은 낱말만
+    # 있으면 요청 꼴도 있어야 한다: "Take 4는 소리 크기가 평가 기준보다 좋았어"는 요청이 아니라 주장이다
+    if not any(w in sentence for w in cfg.reassess_request_words) and not (
+        any(w in sentence for w in cfg.reassess_request_hints)
+        and any(w in sentence for w in cfg.reassess_request_endings)
+    ):
+        return False
+    # 절이 Take 를 집었으면 다시 평가 대상 Take 여야 한다(Take 5 카드가 Take 4 절의 안내를 지우지 않게). 대상을 모르는
+    # 옛 실행 상태(take_id 없음)는 전처럼 받는다
+    named = chk.named_take_numbers(sentence)
+    summaries = lp.ctx.summaries
+    if not named or any(not t or t not in summaries for t in targets):
+        return True
+    return bool(named & {summaries[t].take_number for t in targets})
 
 
 class ClaimLines:

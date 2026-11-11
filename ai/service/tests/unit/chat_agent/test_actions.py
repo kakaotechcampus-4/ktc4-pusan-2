@@ -1721,3 +1721,13 @@ def test_unmeasurable_metric_the_user_did_not_name_goes_back_to_the_model(msg: s
     assert (p.result, p.reason_code, p.card, p.action) == ("TOOL_ERROR", "GOAL_METRIC_NOT_ALLOWED", None, None)
     err = p.tool_message["error"]
     assert err["fields"] == ["metric"] and "audience_ratio" in err["allowed"] and "script_ratio" not in err["allowed"]
+
+
+@pytest.mark.parametrize("msg", ["대본응시비율을 낮추는 걸 목표로 잡아 줘", "대본 응시 비율을 목표로 잡아 줘"])
+def test_user_named_metric_ignores_spacing(msg: str) -> None:
+    """붙여 쓴 지표 이름("대본응시비율")도 사용자가 그 지표를 말한 것이다. 놓치면 사용자가 정한 목표 대신 모델이 다른 지표를
+    고르게 된다(`GOAL_METRIC_NOT_ALLOWED`, Issue #1194 코드 검수)."""
+    from pitch_coach_ai.features.chat_agent.actions import _user_named_metric
+
+    assert _user_named_metric(msg, "script_ratio", CFG)
+    assert not _user_named_metric("다음 목표를 잡아 줘", "script_ratio", CFG)

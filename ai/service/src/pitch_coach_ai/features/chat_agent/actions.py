@@ -745,7 +745,9 @@ def _target_text(target: dict[str, Any], cfg: ChatAgentConfig) -> str:
 def _user_named_metric(message: str, metric: str, cfg: ChatAgentConfig) -> bool:
     """사용자 말이 그 지표를 직접 말했는가(지표 이름 · 화면 이름). 목표 내용을 맡긴 말인지 가리는 데만 쓴다."""
     names = {k for k, v in cfg.metric_names.items() if v == metric} | {clm.METRIC_LABEL.get(metric, "")}
-    return any(n and n in message for n in names)
+    # 띄어쓰기는 보지 않는다("대본응시비율" · "대본 응시 비율"은 같은 지표를 말한 것)
+    flat = "".join(message.split())
+    return any(n and "".join(n.split()) in flat for n in names)
 
 
 def _propose_goal(

@@ -1149,3 +1149,20 @@ def test_saying_it_stays_low_even_looking_again_is_not_a_reassess_request() -> N
     llm = F.FakeLlm([F.plan(assessments=d), F.done()], answers=[F.answer([])], fixes=[F.fix({})])
     _, _, data = F.run_turn(F.request(user_message=msg), llm)
     assert templates.SystemText.MEASUREMENT_FIXED.value not in final_ok(data).message.text  # type: ignore[union-attr]
+
+
+def test_reassess_card_keeps_the_unchecked_notice_of_a_claim_clause() -> None:
+    """'Take 4는 소리 크기가 평가 기준보다 좋았어'는 넓은 낱말('평가')이 있어도 요청이 아니라 주장이다. 이 실행이 Take 5 다시 평가
+    카드를 냈어도 그 절의 '이번 답에서 확인하지 못했어요'는 남긴다(Issue #1194 코드 검수)."""
+    msg = "대본 보고 한 발표였어. Take 5 다시 평가해 줘. Take 4는 소리 크기가 평가 기준보다 좋았어."
+    d = [F.draft("대본 보고 한 발표였어", claim_op="VALUE", dimension="script_independence", metric="script_mode", polarity="POSITIVE")]
+    llm = F.FakeLlm(
+        [F.plan(assessments=d), F.plan(assessments=d), F.tools(REASSESS, prefix="ra")],
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(F.request(user_message=msg), llm)
+    fd = final_ok(data)
+    assert [a.type for a in fd.actions] == ["REASSESS"]
+    text = fd.message.text  # type: ignore[union-attr]
+    assert "Take 4는 소리 크기가 평가 기준보다 좋았어" in text and "이번 답에서 확인하지 못했어요" in text

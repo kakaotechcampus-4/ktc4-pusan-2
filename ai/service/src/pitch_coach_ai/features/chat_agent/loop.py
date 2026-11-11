@@ -2026,6 +2026,8 @@ class Loop:
         rec = {
             "action_id": pending["action_id"],
             "type": pending["type"],
+            # 행동 대상 Take(다시 평가 · 가져오기). 답 문장이 그 Take 의 요청인지 가리는 데 쓴다(`answer.py` `_action_answers`)
+            "take_id": (pending.get("args") or {}).get("take_id"),
             "status": "SUCCEEDED" if applied.ok else ("MISMATCH" if applied.mismatch else "FAILED"),
             "success_text": applied.success_text,
             "reason_code": applied.reason_code,
