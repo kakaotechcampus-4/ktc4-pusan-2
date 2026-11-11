@@ -1,0 +1,113 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-05",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "Take 4 리뷰 우선 개선(속도와 리듬)이 어느 장에서 얼마나 — 3장 분당 372자 빠름 구간, 다음 연습 제안",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-grad",
+        "title": "대학원 진학 연구계획 발표",
+        "last_practiced_at": "2026-11-08T21:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "gr-t3",
+            "take_number": 3,
+            "started_at": "2026-11-04T21:00:00+09:00",
+            "completed_at": "2026-11-04T21:07:00+09:00",
+            "result": {
+              "cpm": [
+                320,
+                330,
+                348,
+                315
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "STABLE"
+              },
+              "score": 74
+            }
+          },
+          {
+            "take_id": "gr-t4",
+            "take_number": 4,
+            "started_at": "2026-11-08T21:00:00+09:00",
+            "completed_at": "2026-11-08T21:07:00+09:00",
+            "result": {
+              "cpm": [
+                318,
+                334,
+                372,
+                321
+              ],
+              "issues": [
+                [
+                  "PACE_FAST",
+                  3,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY"
+              },
+              "score": 69
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-grad"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 4 리뷰에서 가장 먼저 손보라고 한 게 뭐였고, 그게 어느 장에서 얼마나 심했는지 기록으로 짚어 주세요. 다음 연습 땐 무엇부터 해 보면 좋을까요?",
+      "page_take_id": "gr-t4"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "read-report",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:get_take_report:*",
+          "claim:RECORD"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "slide3-cpm",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": 372,
+        "grader": "number",
+        "derive": "gr-t4:SPEED.cpm@3"
+      },
+      {
+        "check_id": "pace-dimension",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "속도|빠르|빠른|빨랐|빨라|빨리",
+        "grader": "regex"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

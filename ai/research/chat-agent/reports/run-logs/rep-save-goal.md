@@ -1,44 +1,33 @@
 # 실행 기록 발췌 — rep-save-goal
 
-- 기능 버전: chat_agent-0.12.0
-- 프롬프트 버전: c098795754dc
-- 모델: gpt-6-luna
-- 검색 방식: hybrid
-- 실행일: 2026-11-10
+- 기능 버전: chat_agent-0.13.0 · 프롬프트 버전: 17278f520767 · 모델: gpt-6-luna
+- 출처: 회귀 재측정 `post4-main`의 첫 실행(가짜 BE · 합성 자료, 모델을 다시 부르지 않고 옮김)
 - 채점 결과(참고): 통과
 
-시나리오는 합성 자료이고, 서명 상태 값은 생략했다.
+## 차례 1 — Take 5 기준으로 3장 청중 시선 비율을 높이는 걸 목표로 잡아 줘
 
-## 시나리오 `rep-save-goal`
+끝 상태 `DONE`
 
-- 제목: 대화 목표 저장: Take 5 기준 3장 청중 시선 비율(28%)을 높이기 — 저장 뒤 다시 읽은 값이 같다
+할 일 단계(화면):
 
-### 사용자 말 1
+- ☑ Take 기록과 목표 설정 가능 여부를 확인하기: Take 5 기록 → 3장 확인
 
-> Take 5 기준으로 3장 청중 시선 비율을 높이는 걸 목표로 잡아 줘
+확인한 것(화면):
 
-#### AI 호출 1 (`req-run-1-1`)
+- 기록 보기 → 코치가 찾은 것 · 확인
 
-| seq | event | 내용 |
-| --- | --- | --- |
-| 1 | plan | [DOING] 목표 설정 가능 여부와 현재 목표 확인<br>[TODO] 해당 Take의 장별 시선 기록 확인<br>[TODO] 요청한 목표에 대해 안내 |
-| 2 | tool_done | get_take_report · OK · 코치가 찾은 것 · 1개 항목 |
-| 3 | plan | [DOING] 목표 설정 가능 여부와 현재 목표 확인<br>[DONE] 해당 Take의 장별 시선 기록 확인: Take 5 기록 → 3장 확인<br>[TODO] 요청한 목표에 대해 안내 |
-| 4 | claim | RECORD: Take 5의 3장에서 청중 시선은 28%였습니다. |
-| - | final | status=NEEDS_ACTION · actions=['SAVE_GOAL'] |
+답(문장 종류 · 글):
 
-BE 행동(호출 뒤)
+- `ASSESSMENT` Take 5의 3장 청중 시선 비율은 28%예요.
+- `ACTION_RESULT` 목표를 저장했어요.
+- `SYSTEM` 연습 뒤 대화를 다시 열면 목표 확인 결과를 볼 수 있어요.
 
-| 행동 | 자율 | 승인 결정 | 실행 | 결과 |
-| --- | --- | --- | --- | --- |
-| SAVE_GOAL | ASK | APPROVED | 실행함 | SUCCEEDED |
+카드: GOAL_SAVED
 
-#### AI 호출 2 (`req-run-1-2`)
+## 결정 로그(`agent_decision` 신호:효과:결정자, 마지막 차례)
 
-| seq | event | 내용 |
-| --- | --- | --- |
-| 5 | claim | ACTION_RESULT: 목표를 저장했어요. |
-| 6 | claim | SYSTEM: 연습 뒤 대화를 다시 열면 목표 확인 결과를 볼 수 있어요. |
-| 7 | plan | [SKIPPED] 목표 설정 가능 여부와 현재 목표 확인<br>[DONE] 해당 Take의 장별 시선 기록 확인: Take 5 기록 → 3장 확인<br>[DONE] 요청한 목표에 대해 안내 |
-| 8 | claim | RECORD: Take 5의 3장 청중 시선은 28%예요. |
-| - | final | status=DONE · actions=[] |
+- `OUTPUT_CHECK:DROPPED:CODE`
+
+## 사건 순서(마지막 차례)
+
+`tool:get_take_report:OK → claim:ASSESSMENT → propose:SAVE_GOAL:ASK → final:NEEDS_ACTION → approve:SAVE_GOAL → exec:SAVE_GOAL:OK → claim:ACTION_RESULT → claim:SYSTEM → decision:OUTPUT_CHECK:DROPPED:CODE → final:DONE`

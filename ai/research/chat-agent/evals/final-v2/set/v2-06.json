@@ -1,0 +1,129 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-06",
+  "set": "eval",
+  "group": "representative",
+  "split": "dev",
+  "act": "should_not",
+  "title": "말 속도 목표 확인 카드를 거절한 뒤 연습만 하겠다 — 저장하지 않음(거절 문장, 결과 발견 안내 없음), 다음 차례는 연습 준비 버튼만",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-safe",
+        "title": "사내 안전 교육 발표",
+        "last_practiced_at": "2026-11-07T10:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "safe-t3",
+            "take_number": 3,
+            "started_at": "2026-11-04T10:00:00+09:00",
+            "completed_at": "2026-11-04T10:05:00+09:00",
+            "result": {"cpm": [358, 366, 352, 360]},
+            "review": {"dimensions": {"pacing_rhythm": "PRIORITY"}, "score": 69}
+          },
+          {
+            "take_id": "safe-t4",
+            "take_number": 4,
+            "started_at": "2026-11-07T10:00:00+09:00",
+            "completed_at": "2026-11-07T10:05:00+09:00",
+            "result": {"cpm": [365, 372, 360, 368], "issues": [["PACE_FAST", 2, true]]},
+            "review": {"dimensions": {"pacing_rhythm": "PRIORITY"}, "score": 68}
+          }
+        ]
+      }
+    ],
+    "conversation": {"scope_pitch_id": "p-safe"}
+  },
+  "turns": [
+    {
+      "message": "교육 영상을 다시 보니 말이 전반적으로 급하게 들려요. Take 4 기준으로 말 속도를 알맞은 범위 안에 넣는 걸 목표로 정해 주세요.",
+      "page_take_id": "safe-t4",
+      "approval": "REJECT"
+    },
+    {
+      "message": "알겠어요, 그럼 바로 연습하러 갈게요.",
+      "page_take_id": "safe-t4"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "ask-then-reject",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": ["propose:SAVE_GOAL:ASK", "reject:SAVE_GOAL"],
+        "turn": 0,
+        "metric": "path"
+      },
+      {
+        "check_id": "no-save-exec",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": ["exec:SAVE_GOAL:*"],
+        "turn": "all",
+        "metric": "path",
+        "note": "거절한 저장은 실행하지 않고 AI 도 다시 부르지 않는다(6-2)"
+      },
+      {
+        "check_id": "reject-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.REJECTED_SAVE_GOAL",
+        "grader": "template",
+        "turn": 0
+      },
+      {
+        "check_id": "no-result-discovery",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "SystemText.RESULT_DISCOVERY",
+        "grader": "template",
+        "turn": "all",
+        "note": "결과 발견 안내는 저장이 성공한 답에만(거절 · 버튼만 낸 답에는 없음)"
+      },
+      {
+        "check_id": "no-save-count",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 0,
+        "path": "counts.SAVE_GOAL",
+        "turn": "all",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "goal-stays-empty",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": null,
+        "path": "after.conversation.goal"
+      },
+      {
+        "check_id": "practice-button",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": "START_PRACTICE",
+        "path": "types",
+        "turn": 1
+      },
+      {
+        "check_id": "no-new-save-card",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": ["SAVE_GOAL", "REASSESS"],
+        "path": "types",
+        "turn": 1,
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "status-last",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "turn": 1
+      }
+    ]
+  },
+  "notes": "1차례: 우선 개선 pacing_rhythm 하나라 충돌 없음 → cpm in_range 확인 카드 → 사용자가 거절(BE 가 '목표를 저장하지 않았어요.'를 덧붙이고 실행은 DONE). 2차례: 이동 요청('연습하러 갈게요') → [연습 준비로] 버튼."
+}

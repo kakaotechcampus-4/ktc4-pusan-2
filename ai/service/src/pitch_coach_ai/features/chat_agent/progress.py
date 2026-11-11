@@ -378,29 +378,39 @@ def _report_run(
         first = next((it["dimension"] for it in items if it.get("state") == "PRIORITY"), None)
         if first is not None:
             return run(r["PRIORITY"].format(dimension=DIM_LABEL.get(first, first)))
-    if section == "slides" and (tr.read_state == "UNMEASURED" or _asked_unmeasured(snap, areas)):
-        return run(r["UNMEASURED"])
+    if section == "slides":
+        missing = unmeasured_areas(snap, areas)
+        if tr.read_state == "UNMEASURED" or (missing and len(missing) == len(areas or ())):
+            return run(r["UNMEASURED"])
+        if missing:
+            # 물은 영역 중 일부만 측정 안 됨(시선과 말 속도를 함께 물었는데 시선만 측정 안 됨): 어느 영역인지 붙인다
+            return run(f"{' · '.join(tpl.AREA_LABEL.get(a, a) for a in missing)} {r['UNMEASURED']}")
     if section == "slides" and args.slide_number:
         # 무엇을 봤는지 보인다: `3장 확인`(장 번호는 그 단계 근거로 표시 검사를 받는다)
         return run(r["SLIDE_CHECKED"].format(slide=args.slide_number))
     return run(r["CHECKED"])
 
 
-def _asked_unmeasured(snap: Any, areas: frozenset[str] | None) -> bool:
-    """물은 영역(`asked_areas`)이 그 Take 에서 모두 측정 안 됨인가(영역에 미측정 사유가 있거나 Take 값이 null). 장별 값을 읽으면
-    다른 지표가 측정됐어도 물은 영역의 측정 안 됨을 단계에 보인다(final60 ana-webinar-voice-unmeasured: 목소리 크기를 물었는데
-    `확인`으로만 보이고 답에 측정 안 됨이 빠짐). 물은 영역을 모르거나 Take 결과가 없으면 False."""
+def unmeasured_areas(snap: Any, areas: frozenset[str] | None) -> list[str]:
+    """물은 영역(`asked_areas`) 중 그 Take 에서 측정 안 됨인 영역(영역에 미측정 사유가 있거나 Take 값이 null), 정렬해서. 장별 값을
+    읽으면 다른 지표가 측정됐어도 물은 영역의 측정 안 됨을 단계에 보인다(final60 ana-webinar-voice-unmeasured). 영역마다 따로
+    본다: 시선과 말 속도를 함께 물었는데 시선만 측정 안 됨이면 시선을 돌려준다(6-1 7번 '그 항목의 것', Issue #1194 독립 평가).
+    물은 영역을 모르거나 Take 결과가 없으면 빈 목록."""
     if not areas or snap is None:
-        return False
+        return []
     tr = snap.results.take_result or {}
     got = tr.get("areas") or {}
-    for area in areas:
-        av = got.get(area)
-        if not isinstance(av, dict) or not (
-            av.get("unmeasured_reason") is not None or av.get("take") is None
-        ):
-            return False
-    return True
+    return sorted(
+        area
+        for area in areas
+        if isinstance(av := got.get(area), dict)
+        and (av.get("unmeasured_reason") is not None or av.get("take") is None)
+    )
+
+
+def asked_unmeasured(snap: Any, areas: frozenset[str] | None) -> bool:
+    """물은 영역 중 하나라도 그 Take 에서 측정 안 됨인가(`unmeasured_areas`)."""
+    return bool(unmeasured_areas(snap, areas))
 
 
 def fetch_run(take_id: str | None, ok: bool, ctx: RunCtx) -> StepRun:
@@ -435,16 +445,59 @@ def attach(
     max_steps: int,
     key: str | None = None,
     cached: bool = False,
+    why: str | None = None,
 ) -> int | None:
     """실행을 단계에 붙이고 그 단계 번호(0부터)를 돌려준다. 붙일 단계가 없으면 실행 뒤에 새 단계를 남은 단계 앞에 끼운다
     (목적 = 도구 종류 이름). 이미 `max_steps`단계면 붙이지 않고 None(trace 에만 남는다).
     캐시 적중이라도 힌트가 맞는 미완 단계가 있으면 그 단계를 채운다(계획한 일을 이미 읽은 기록으로 끝냄). 붙일 단계가 없어 새 단계를
     덧붙여야 할 때, 같은 호출(`key`)을 이미 보인 단계가 있는 캐시 적중이면 덧붙이지 않고 그 단계 번호만 돌려준다(되풀이 읽기는 새 일이 아니다)."""
-    i = pick(meta, run.tool)
+    if why is not None:
+        # 신호에 대응한 대안 실행(4-F): 계획한 단계에 섞지 않고 `<까닭> <대안>` 단계로 보인다. 같은 까닭 · 같은 Take 의 대안
+        # 단계가 이미 있으면 거기에 잇는다(코치 기록의 두 절을 한 단계로)
+        i = next(
+            (j for j, m in enumerate(meta) if m["purpose"] == why and m.get("take") == run.take),
+            None,
+        )
+        if i is None:
+            if len(meta) >= max_steps:
+                return None
+            # 실행한 단계(실패한 단계 포함) 뒤, 아직 하지 않은 단계 앞에 끼운다
+            todo = [j for j in _pending(meta) if not meta[j]["ran"]]
+            i = todo[0] if todo else len(meta)
+            meta.insert(i, _meta(why, run.tool))
+    else:
+        i = pick(meta, run.tool)
     if i is None and cached and key is not None:
         seen = next((j for j, m in enumerate(meta) if key in m.get("keys", [])), None)
         if seen is not None:
             return seen
+    if i is None and why is None:
+        # 같은 도구 · 같은 대상을 이미 실행한 단계가 있으면 새 단계를 덧붙이지 않고 거기에 잇는다(같은 Take 기록의 두 절 · 자료 찾기
+        # 여러 번이 화면에서 겹쳐 보이지 않게, Issue #1194 화면 검토). 결과는 더 구체적인 쪽을 남긴다
+        # '아직 불러오지 않음' 뒤의 가져오기 · 다시 읽기는 순서 자체가 할 일이라 합치지 않는다. 비교는 지표마다 결과가 따로라
+        # (예: 말 속도 '비교 불가(판정 기준 버전 다름)' · 청중 시선 '좋아짐') 합치지 않는다 — 합치면 단계 글이 길어져 까닭이 빠진다
+        same = next(
+            (
+                j
+                for j, m in enumerate(meta)
+                if m["ran"] == run.tool
+                and run.tool in _MERGED_TOOLS
+                and m.get("take") == run.take
+                and m["done"]
+                and run.done
+                and m["result"] not in _SEPARATE_RESULTS
+            ),
+            None,
+        )
+        if same is not None:
+            m = meta[same]
+            m.update(result=merge_result(m["result"], run.result))
+            m["evidence_ids"] = list(dict.fromkeys([*m["evidence_ids"], *run.evidence_ids]))
+            if tool_seq is not None:
+                m["tool_seqs"] = [*m["tool_seqs"], tool_seq]
+            if key is not None:
+                m["keys"] = [*m.get("keys", []), key]
+            return same
     if i is None:
         if len(meta) >= max_steps:
             return None
@@ -469,14 +522,64 @@ def attach(
     return i
 
 
+#: 한 단계에 이은 실행 결과를 합칠 때 덜 구체적인 결과(다른 결과가 있으면 버린다)
+_PLAIN_RESULTS = (
+    tpl.PLAN_RESULT["CHECKED"],
+    tpl.PLAN_RESULT["GUIDES"],
+    tpl.PLAN_RESULT["NO_GUIDES"],
+)
+#: 다음 실행을 기다린 사실이라 같은 도구의 다음 실행과 한 단계로 합치지 않는 결과
+_SEPARATE_RESULTS = (tpl.PLAN_RESULT["NOT_LOADED"],)
+#: 같은 대상의 되풀이 실행을 한 단계로 합치는 도구(같은 Take 기록의 여러 절 · 자료 찾기 여러 번 · 목록 다시 보기)
+_MERGED_TOOLS = ("get_take_report", "search_guides", "list_takes", "list_pitches", "get_goals")
+
+
+def merge_result(old: str | None, new: str | None) -> str | None:
+    """한 단계에 이은 두 실행의 결과: 같으면 하나, 한쪽이 '확인'처럼 덜 구체적이면 다른 쪽, 자료는 하나라도 있으면 '자료 있음',
+    그 밖은 ' · '로 잇는다."""
+    if not old or old == new:
+        return new or old
+    if not new:
+        return old
+    guides = {tpl.PLAN_RESULT["GUIDES"], tpl.PLAN_RESULT["NO_GUIDES"]}
+    if {old, new} == guides:
+        return tpl.PLAN_RESULT["GUIDES"]
+    if old in _PLAIN_RESULTS:
+        return new
+    if new in _PLAIN_RESULTS:
+        return old
+    return f"{old} · {new}"
+
+
+def add_unresolved(meta: list[dict[str, Any]], max_steps: int) -> int | None:
+    """요청 해소 검사(4-B)로 남은 항목이 있다: 아직 하지 않은 단계(답 쓰기 제외)가 없으면 '물은 항목 확인' 단계를 답 쓰기 앞에
+    더해 `PARTIAL`의 남은 일(TODO)로 보이게 한다. 더한(또는 이미 있던 미완) 단계 번호. 할 일 목록이 상한(`max_steps`, 8)으로
+    차 있으면 더하지 않고 None(끝 상태는 그래도 `PARTIAL`이다)."""
+    for i, m in enumerate(meta):
+        if not m["done"] and not m["skipped"] and not m["ran"] and m["tool"] != "answer":
+            return i
+    if len(meta) >= max_steps:
+        return None
+    answer = next((i for i, m in enumerate(meta) if m["tool"] == "answer"), len(meta))
+    meta.insert(answer, _meta(tpl.PLAN_UNRESOLVED, None))
+    return answer
+
+
 def current_step(meta: list[dict[str, Any]]) -> int | None:
     """지금 하던 단계(답 쓰기 단계를 뺀 첫 미완 단계)."""
     return next((i for i in _pending(meta) if meta[i]["tool"] != "answer"), None)
 
 
-def mark_short(meta: list[dict[str, Any]]) -> int | None:
-    """조사가 한도 · 시간으로 멈췄다: 지금 하던 단계에 결과가 없으면 `시간 부족`을 단다. 그 단계 번호(없으면 None)."""
+def mark_short(meta: list[dict[str, Any]], max_steps: int | None = None) -> int | None:
+    """조사가 한도 · 시간으로 멈췄다: 지금 하던 단계에 결과가 없으면 `시간 부족`을 단다. 그 단계 번호(없으면 None).
+
+    계획한 조사 단계를 모두 마친 뒤 멈췄으면(모델이 더 읽으려다 한도에 닿음) 남은 일이 화면에 보이게 '물은 항목 확인' 단계를 답 쓰기
+    앞에 더해 `시간 부족`을 단다(`max_steps`를 줄 때, 목록이 차 있으면 더하지 않음). 끝이 `PARTIAL`이면 남은 일(TODO)이고, 답이
+    요청을 해소해 `DONE`이면 실행하지 않은 단계라 끝 처리가 뺀다(v1 회귀 path-fail-budget-partial: `PARTIAL`인데 남은 일이 없었다)."""
     i = current_step(meta)
+    if i is None and max_steps is not None and len(meta) < max_steps:
+        i = next((j for j, m in enumerate(meta) if m["tool"] == "answer"), len(meta))
+        meta.insert(i, _meta(tpl.PLAN_UNRESOLVED, None))
     if i is not None and meta[i]["result"] is None:
         meta[i]["result"] = tpl.PLAN_RESULT["SHORT"]
     return i
@@ -587,20 +690,24 @@ def finish_plan(
     *,
     answered: bool,
 ) -> list[dict[str, Any]]:
-    """끝 처리: DONE · REFUSED 면 실행하지 않은 단계 SKIPPED, PARTIAL 이면 TODO(DOING 포함), NEEDS_ACTION 은 그대로.
-    답 쓰기 단계(`tool == "answer"`)는 `answered`(답 문장이 하나 이상)면 DONE. 실행했지만 실패한 단계(`확인 실패`)는 DONE · REFUSED
-    답에서 DONE 이다 — 실행한 단계이고 글이 실패를 보이므로 '의도적으로 건너뜀'(SKIPPED)이 아니다. PARTIAL 이면 남은 일(TODO)."""
+    """끝 처리: DONE · REFUSED 면 실행하지 않은 단계를 목록에서 뺀다, PARTIAL 이면 TODO(DOING 포함), NEEDS_ACTION 은 그대로.
+    끝난 답에 실행하지 않은 단계(처음 계획의 가설)가 남아 보이면 무엇을 했는지 헷갈린다(Issue #1194 화면 검토: '— 건너뜀'이
+    두 차례 모두 남음). 다만 모든 단계가 빠지면 마지막 단계 하나는 남긴다. 답 쓰기 단계(`tool == "answer"`)는 `answered`(답
+    문장이 하나 이상)면 DONE. 실행했지만 실패한 단계(`확인 실패`)는 DONE · REFUSED 답에서 DONE 이다 — 실행한 단계이고 글이 실패를
+    보인다. PARTIAL 이면 남은 일(TODO)."""
     plan = render(meta, registry, cfg)
     if status not in ("DONE", "REFUSED", "PARTIAL"):
         return plan
-    left = "TODO" if status == "PARTIAL" else "SKIPPED"
     out = []
     for m, p in zip(meta, plan, strict=True):
         if p["status"] in ("DOING", "TODO"):
             ran_failed = bool(m.get("ran")) and bool(m.get("failed")) and status != "PARTIAL"
             done = (m["tool"] == "answer" and answered) or ran_failed
-            p = {**p, "status": "DONE" if done else left}
+            p = {**p, "status": "DONE" if done else ("TODO" if status == "PARTIAL" else "SKIPPED")}
         out.append(p)
+    if status != "PARTIAL":
+        kept = [p for p in out if p["status"] != "SKIPPED"]
+        out = kept or out[-1:]
     return out
 
 

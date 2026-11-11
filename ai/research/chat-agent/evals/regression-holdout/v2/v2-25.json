@@ -1,0 +1,474 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-25",
+  "set": "eval",
+  "group": "global_scope",
+  "split": "dev",
+  "act": "should",
+  "title": "피치 22개 중 최근 20개 밖의 피치를 이름으로 물음 — 이름으로 가져와 범위를 바꾸고 마지막 Take 군더더기 분당 3.4회",
+  "baseline_type": "scope",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-f01",
+        "title": "주간 팀 스탠드업 공유",
+        "takes": [
+          {
+            "take_id": "f01-t1",
+            "take_number": 1,
+            "started_at": "2026-11-09T20:00:00+09:00",
+            "completed_at": "2026-11-09T20:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-09T20:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-f02",
+        "title": "신입 사원 환영 인사",
+        "takes": [
+          {
+            "take_id": "f02-t1",
+            "take_number": 1,
+            "started_at": "2026-11-08T18:00:00+09:00",
+            "completed_at": "2026-11-08T18:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-08T18:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-f03",
+        "title": "고객 만족도 조사 결과 보고",
+        "takes": [
+          {
+            "take_id": "f03-t1",
+            "take_number": 1,
+            "started_at": "2026-11-07T16:00:00+09:00",
+            "completed_at": "2026-11-07T16:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-07T16:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-f04",
+        "title": "독서 모임 발제",
+        "takes": [
+          {
+            "take_id": "f04-t1",
+            "take_number": 1,
+            "started_at": "2026-11-06T14:00:00+09:00",
+            "completed_at": "2026-11-06T14:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-06T14:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-f05",
+        "title": "중학생 대상 코딩 캠프 소개",
+        "takes": [
+          {
+            "take_id": "f05-t1",
+            "take_number": 1,
+            "started_at": "2026-11-05T12:00:00+09:00",
+            "completed_at": "2026-11-05T12:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-05T12:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-f06",
+        "title": "지역 카페 창업 경험담",
+        "takes": [
+          {
+            "take_id": "f06-t1",
+            "take_number": 1,
+            "started_at": "2026-11-04T10:00:00+09:00",
+            "completed_at": "2026-11-04T10:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-04T10:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-f07",
+        "title": "사내 동호회 연말 결산",
+        "takes": [
+          {
+            "take_id": "f07-t1",
+            "take_number": 1,
+            "started_at": "2026-11-03T08:00:00+09:00",
+            "completed_at": "2026-11-03T08:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-03T08:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-f08",
+        "title": "물류 창고 안전 수칙 교육",
+        "takes": [
+          {
+            "take_id": "f08-t1",
+            "take_number": 1,
+            "started_at": "2026-11-02T06:00:00+09:00",
+            "completed_at": "2026-11-02T06:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-02T06:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-f09",
+        "title": "학부 캡스톤 중간 점검",
+        "takes": [
+          {
+            "take_id": "f09-t1",
+            "take_number": 1,
+            "started_at": "2026-11-01T04:00:00+09:00",
+            "completed_at": "2026-11-01T04:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-01T04:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-f10",
+        "title": "온라인 쇼핑몰 리뉴얼 제안",
+        "takes": [
+          {
+            "take_id": "f10-t1",
+            "take_number": 1,
+            "started_at": "2026-10-31T02:00:00+09:00",
+            "completed_at": "2026-10-31T02:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-10-31T02:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-f11",
+        "title": "봄 학기 수강 신청 안내",
+        "takes": [
+          {
+            "take_id": "f11-t1",
+            "take_number": 1,
+            "started_at": "2026-10-30T00:00:00+09:00",
+            "completed_at": "2026-10-30T00:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-10-30T00:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-f12",
+        "title": "헬스장 신규 회원 오리엔테이션",
+        "takes": [
+          {
+            "take_id": "f12-t1",
+            "take_number": 1,
+            "started_at": "2026-10-28T22:00:00+09:00",
+            "completed_at": "2026-10-28T22:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-10-28T22:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-f13",
+        "title": "기후 변화 토론 기조 발언",
+        "takes": [
+          {
+            "take_id": "f13-t1",
+            "take_number": 1,
+            "started_at": "2026-10-27T20:00:00+09:00",
+            "completed_at": "2026-10-27T20:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-10-27T20:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-f14",
+        "title": "사내 해커톤 아이디어 피칭",
+        "takes": [
+          {
+            "take_id": "f14-t1",
+            "take_number": 1,
+            "started_at": "2026-10-26T18:00:00+09:00",
+            "completed_at": "2026-10-26T18:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-10-26T18:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-f15",
+        "title": "합창단 정기 공연 인사말",
+        "takes": [
+          {
+            "take_id": "f15-t1",
+            "take_number": 1,
+            "started_at": "2026-10-25T16:00:00+09:00",
+            "completed_at": "2026-10-25T16:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-10-25T16:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-f16",
+        "title": "제품 품질 개선 회의 보고",
+        "takes": [
+          {
+            "take_id": "f16-t1",
+            "take_number": 1,
+            "started_at": "2026-10-24T14:00:00+09:00",
+            "completed_at": "2026-10-24T14:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-10-24T14:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-f17",
+        "title": "어학연수 프로그램 설명",
+        "takes": [
+          {
+            "take_id": "f17-t1",
+            "take_number": 1,
+            "started_at": "2026-10-23T12:00:00+09:00",
+            "completed_at": "2026-10-23T12:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-10-23T12:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-f18",
+        "title": "마을 축제 자원봉사자 안내",
+        "takes": [
+          {
+            "take_id": "f18-t1",
+            "take_number": 1,
+            "started_at": "2026-10-22T10:00:00+09:00",
+            "completed_at": "2026-10-22T10:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-10-22T10:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-f19",
+        "title": "스터디 카페 운영 보고",
+        "takes": [
+          {
+            "take_id": "f19-t1",
+            "take_number": 1,
+            "started_at": "2026-10-21T08:00:00+09:00",
+            "completed_at": "2026-10-21T08:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-10-21T08:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-f20",
+        "title": "의료 기기 사용법 시연",
+        "takes": [
+          {
+            "take_id": "f20-t1",
+            "take_number": 1,
+            "started_at": "2026-10-20T06:00:00+09:00",
+            "completed_at": "2026-10-20T06:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-10-20T06:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-f21",
+        "title": "청년 주거 정책 소개",
+        "takes": [
+          {
+            "take_id": "f21-t1",
+            "take_number": 1,
+            "started_at": "2026-10-19T04:00:00+09:00",
+            "completed_at": "2026-10-19T04:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-10-19T04:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-gu",
+        "title": "구청 민원 서비스 개선 보고",
+        "takes": [
+          {
+            "take_id": "gu-t1",
+            "take_number": 1,
+            "started_at": "2026-10-08T16:00:00+09:00",
+            "completed_at": "2026-10-08T16:07:00+09:00",
+            "result": {
+              "filler_per_min": 4.1,
+              "filler_count": 16
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "gu-t2",
+            "take_number": 2,
+            "started_at": "2026-10-12T16:00:00+09:00",
+            "completed_at": "2026-10-12T16:07:00+09:00",
+            "result": {
+              "filler_per_min": 3.4,
+              "filler_count": 14
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY"
+              },
+              "score": 69
+            }
+          }
+        ],
+        "last_practiced_at": "2026-10-12T16:00:00+09:00"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": null
+    }
+  },
+  "turns": [
+    {
+      "message": "목록에서는 안 보이던데, 예전에 만든 '구청 민원 서비스 개선 보고' 발표 있잖아요. 그 발표 마지막 Take에서 군더더기가 분당 몇 번 나왔는지 알려 주세요."
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "fetch-by-name",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "propose:FETCH_PITCH:AUTO",
+          "exec:FETCH_PITCH:OK",
+          "tool:get_take_report:*"
+        ],
+        "metric": "path",
+        "note": "5-3 pitches_total: 목록(최근 20개)에 없는 이름은 FETCH_PITCH(이름)로 찾는다"
+      },
+      {
+        "check_id": "scope-changed",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "p-gu",
+        "path": "scope_pitch_id"
+      },
+      {
+        "check_id": "filler-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": 3.4,
+        "grader": "number",
+        "derive": "gu-t2:FILLER.filler_per_min"
+      },
+      {
+        "check_id": "scope-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "name": "ACTION_SUCCESS.FETCH_PITCH",
+          "fields": {
+            "title": "구청 민원 서비스 개선 보고"
+          }
+        },
+        "grader": "template"
+      },
+      {
+        "check_id": "not-not-found",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "SystemText.PITCH_NOT_FOUND",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "p-gu 는 last_practiced_at 이 가장 오래돼 기본 자료 pitches(최근 20개)에 실리지 않는다(pitches_total 22)."
+}

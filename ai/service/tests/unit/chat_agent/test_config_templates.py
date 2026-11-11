@@ -194,7 +194,10 @@ def test_fill_chooses_particle_by_final_consonant() -> None:
     """7-9 · 7-10 문구의 '{x}으로' · '{x}예요'는 값의 받침에 맞춰 읽힌다."""
     from pitch_coach_ai.features.chat_agent.templates import ACTION_SUCCESS, PRESSURE, fill
 
-    tpl = ACTION_SUCCESS["FETCH_PITCH"]
+    tpl = "{title}으로 범위를 바꿨어요."  # 받침 고르기 규칙을 보는 꼴(제목 뒤 조사)
+    assert (
+        ACTION_SUCCESS["FETCH_PITCH"] == "'{title}' 기록을 가져왔어요."
+    )  # 제목을 따옴표로 묶어 조사가 붙지 않는다
     assert fill(tpl, title="졸업 발표") == "졸업 발표로 범위를 바꿨어요."
     assert fill(tpl, title="학회 발표 연습") == "학회 발표 연습으로 범위를 바꿨어요."
     assert fill(tpl, title="최종 발표 (2차)") == "최종 발표 (2차)로 범위를 바꿨어요."
@@ -207,9 +210,9 @@ def test_fill_chooses_particle_by_final_consonant() -> None:
 
 
 def test_fill_does_not_reinterpret_braces_in_values() -> None:
-    from pitch_coach_ai.features.chat_agent.templates import ACTION_SUCCESS, fill
+    from pitch_coach_ai.features.chat_agent.templates import fill
 
     assert (
-        fill(ACTION_SUCCESS["FETCH_PITCH"], title="발표 {A} {0:>3}")
+        fill("{title}으로 범위를 바꿨어요.", title="발표 {A} {0:>3}")
         == "발표 {A} {0:>3}으로 범위를 바꿨어요."
     )  # 끝 숫자 3(삼)은 받침 있음

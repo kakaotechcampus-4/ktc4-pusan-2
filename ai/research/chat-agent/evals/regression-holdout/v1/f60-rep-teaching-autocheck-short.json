@@ -1,0 +1,128 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-rep-teaching-autocheck-short",
+  "set": "eval",
+  "group": "representative",
+  "split": "dev",
+  "act": "should_not",
+  "title": "자동 목표 확인 — 군더더기 2.8 → 2.5(감소 0.3 < 0.5) 못 이룸, 이뤘다고 하지 않음",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-teach",
+        "title": "교생 실습 수업 시연",
+        "takes": [
+          {
+            "take_id": "teach-t2",
+            "take_number": 2,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "result": {
+              "filler_per_min": 2.8,
+              "filler_count": 11
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY"
+              },
+              "score": 68
+            }
+          },
+          {
+            "take_id": "teach-t3",
+            "take_number": 3,
+            "started_at": "2026-11-05T14:00:00+09:00",
+            "completed_at": "2026-11-05T14:07:00+09:00",
+            "result": {
+              "filler_per_min": 2.5,
+              "filler_count": 10
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY"
+              },
+              "score": 70
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-teach",
+      "goal": {
+        "metric": "filler_per_min",
+        "slide_number": null,
+        "base_take_id": "teach-t2",
+        "version": 1,
+        "status": "OPEN",
+        "after_take": 2,
+        "created_at": "2026-11-03T09:00:00+09:00"
+      }
+    }
+  },
+  "turns": [
+    {
+      "auto_goal_check": true
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "goal-status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "NOT_ACHIEVED",
+        "path": "goal_result.status"
+      },
+      {
+        "check_id": "goal-terminal",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "path": "goal_result.terminal",
+        "note": "UNKNOWN 만 terminal false(5-5)"
+      },
+      {
+        "check_id": "goal-observed",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": 2.5,
+        "path": "goal_result.observed",
+        "derive": "teach-t3:FILLER.filler_per_min"
+      },
+      {
+        "check_id": "no-achieved-word",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "GOAL_WORD.ACHIEVED",
+        "grader": "template"
+      },
+      {
+        "check_id": "not-achieved-word",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "GOAL_WORD.NOT_ACHIEVED",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-propose",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "propose:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-confirmed-line",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "기록 \\d+건을 확인",
+        "grader": "regex",
+        "note": "TARGET 3(고침): '확인한 것' 줄은 넣지 않는다"
+      }
+    ]
+  },
+  "notes": "lt_base: base 2.8 − current 2.5 = 0.3 < min_delta 0.5(6-4 시작값) → NOT_ACHIEVED."
+}

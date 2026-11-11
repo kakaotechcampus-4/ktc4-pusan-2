@@ -908,7 +908,7 @@ def test_fm_L6_15_preference_conflicting_problem_is_partly_whatever_the_model_sa
     snap = t5(issues=[("PACE_FAST", 2, True)])
     cv = run(pref(model_verdict), snap, focus="take-5")
     assert (cv.verdict, cv.verdict_source) == ("PARTLY", "CODE")  # 어긋남 = PARTLY
-    assert cv.evidence_ids and cv.evidence_phrase == "Take 5 말이 빠름"
+    assert cv.evidence_ids and cv.evidence_phrase == "Take 5 빠른 말 속도"
 
 
 @pytest.mark.parametrize("model_verdict", ["SUPPORTED", "PARTLY", "CONTRADICTED", "UNVERIFIABLE"])
@@ -948,7 +948,9 @@ def test_fm_L6_15_preference_never_contradicted_and_ignores_model_evidence_ids()
 def test_fm_L6_15_preference_uses_its_own_template_never_the_measured_one():
     snap = t5(issues=[("PACE_FAST", 2, True)])
     o = fin([pref("PARTLY")], PREF_MSG, snap, focus="take-5").outcomes[0]
-    assert o.sentence == "말씀하신 방식은 존중해요. 다만 이 피치의 기록에서는 Take 5 말이 빠름예요."
+    assert (
+        o.sentence == "말씀하신 방식은 존중해요. 다만 이 피치의 기록에서는 Take 5 빠른 말 속도예요."
+    )
     assert "기록과 달라요" not in o.sentence
     fits = fin([pref("PARTLY")], PREF_MSG, t5(), focus="take-5").outcomes[0]
     assert fits.assessment.verdict == "SUPPORTED"
@@ -1930,6 +1932,43 @@ def test_goal_and_script_synonyms_state_a_reassess_condition() -> None:
     assert not clm.measurement_dispute("시선이 낮게 나왔는데 스크립트 보고 했어. 다시 봐 줘", cfg)
     assert clm.measurement_dispute("카메라가 낮아서 시선이 낮게 나왔어. 다시 봐 줘", cfg)
     assert clm._SCRIPT_USE_RE.search("Take 5는 프롬프터 보고 했어")
+
+
+@pytest.mark.parametrize(
+    ("text", "hit"),
+    [
+        ("화면에 대본을 띄워 놓고 한 연습", True),
+        ("대본을 전부 띄워 놓고 한 리허설이었어요", True),
+        ("프롬프터 화면에 핵심어를 띄워 두고 참고한 거라서요", True),
+        ("종이 원고를 손에 들고 읽으면서", True),
+        ("대본 봤어", True),
+        ("대본을 안 보고 했어", False),
+        ("대본을 못 보고 했어", False),
+        ("대본 없이 발표했어", False),
+        ("대본은 보지 않고 했어", False),
+        ("대본 없는 연습이었어", False),
+        # 다른 대상을 보았다 · 대본이 아닌 것으로 했다(코드 검수 반례)
+        ("대본 말고 자료를 보고 했어", False),
+        ("대본 작성자를 보고 했어", False),
+        ("대본없이 보고 했어", False),
+        ("대본 대신 메모를 보고 했어", False),
+    ],
+)
+def test_script_use_statement_forms(text: str, hit: bool) -> None:
+    """대본 사용 진술은 명사와 동사 사이에 조사 · 낱말 두 개까지 낄 수 있고(부사 · 장소), 부정이 끼면 진술이 아니다
+    (Issue #1194 독립 평가: '대본을 전부 띄워' · '프롬프터 화면에 핵심어를 띄워'를 놓쳐 화면 대본 사실 문장이 빠졌다)."""
+    from pitch_coach_ai.features.chat_agent import claims as clm
+
+    assert bool(clm._SCRIPT_USE_RE.search(text)) is hit
+
+
+def test_adnominal_past_counts_as_a_past_statement() -> None:
+    """'참고한 거라서요'처럼 관형 과거로 끝낸 말도 지난 일의 진술이다(요청 어미는 따로 본다)."""
+    from pitch_coach_ai.features.chat_agent import claims as clm
+
+    assert clm._says_past("프롬프터 화면에 핵심어를 띄워 두고 참고한 거라서요")
+    assert clm._says_past("대본 보고 한 발표였어")
+    assert not clm._says_past("대본 보고 해 줘")
 
 
 def test_goal_only_counts_as_a_condition_when_a_number_is_set() -> None:

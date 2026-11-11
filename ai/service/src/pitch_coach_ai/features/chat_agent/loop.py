@@ -38,6 +38,7 @@ import json
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import ValidationError
@@ -80,7 +81,7 @@ from .tools import (
     run_tool,
     validate_args,
 )
-from .tools.impl import embed_planned_queries
+from .tools.impl import COACH_SECTIONS, embed_planned_queries, practiced_date
 from .values import METRIC_AREA
 from .version import FEATURE_VERSION, SCHEMA_VERSION, TOOL_SCHEMA_VERSION
 
@@ -95,6 +96,20 @@ DEFAULT_PLAN = [
 PLAN_ROUTES = ("RESEARCH", "ANSWER_DIRECT", "SMALL_TALK", "OUT_OF_SCOPE")
 #: 조사 종료 사유: 이어 부른 실행의 첫 조사가 출력 예약에 막혀 조사를 건너뜀(끝 상태는 요청 해소로, 진단 끝 이유는 TOKENS)
 RESUME_RESERVE_STOP = "RESUME_RESERVE"
+#: 늘 같은 대응이 정답인 신호(4-G): 코드가 바로 처리하고 모델에게 대응을 묻지 않는다(`Loop._code_signal`). 기록 없음
+#: (`NO_RECORD`)은 대응은 늘 '없음으로 답'이었지만, 모델이 그 신호를 보고 '없음'과 다음 걸음을 답에 썼다 — 코드로 닫자
+#: 회귀 세트에서 그 안내가 빠지는 문항이 늘어(목표 없음 · 측정값 이의 등 4문항) 모델에게 다시 연다(Issue #1194 재측정)
+CODE_SIGNALS = frozenset({"REVIEW_MISSING", "NOT_LOADED"})
+
+
+def _alt_name(name: str, args: Any) -> str:
+    """대안 단계의 대안 이름(4-F): 기록 보기는 읽은 절로 코치 기록 · 리뷰 보기를 가린다."""
+    if name == "get_take_report":
+        section = getattr(args, "section", None)
+        return templates.PLAN_ALT_COACH if section in COACH_SECTIONS else templates.PLAN_ALT_REVIEW
+    return templates.PLAN_ALT_NAME.get(name, templates.PLAN_TOOL_NAME.get(name, name))
+
+
 #: 가벼운 말 종류(P-0008 5-1)
 TALK_KINDS = ("GREETING", "THANKS", "CAPABILITY", "PRACTICE_INTENT", "FAREWELL")
 #: '같은 조건으로 다시 평가' 말에서 새 대상 · 조건으로 보는 표기: 숫자(Take · 장 번호 · 기준 값)와 Take 지칭(6-6 되살리기)
@@ -133,6 +148,60 @@ def goal_question(msg: str | None, cfg: Any) -> bool:
         and any(w in m for w in cfg.goal_question_ask_words)
         and not any(w in m for w in cfg.goal_set_words)
     )
+
+
+def latest_pitch_question(msg: str | None, cfg: Any) -> bool:
+    """가장 최근 · 마지막으로 한 발표 · 피치를 찾는 말인가(Issue #1194 4-A): 최근 낱말(`latest_pitch_words`) 바로 뒤에, 사이에 조사
+    '에 · 으로'와 꾸밈말(`latest_pitch_verbs`: 한 · 했던 · 연습한 …) 하나까지만 두고 발표 낱말(`latest_pitch_targets`)이 온다.
+    "가장 최근에 한 발표를 보고 싶어" · "마지막으로 연습한 피치 뭐였지?" · "최근 발표 어땠어?". 발표 낱말 바로 뒤는 조사
+    (`latest_pitch_particles`) · 문장 부호 · 끝이거나, 띄우고 묻는 말(`latest_pitch_follow`: 뭐 · 어땠 · 보여 …)이어야 한다.
+    "최근 발표할 때 떨려요" · "최신 발표 트렌드" · "마지막 피치 부분에서"처럼 발표를 하는 일 · 다른 것을 말하는 말은 아니다.
+    "발표 마지막 장"처럼 발표 낱말이 앞에 오면 아니다. 범위 피치가 있는 대화에서는 쓰지 않는다(그 피치의 Take 목록이 '최근'의 답이다)."""
+    m = msg or ""
+    words = "|".join(re.escape(w) for w in sorted(cfg.latest_pitch_words, key=len, reverse=True))
+    verbs = "|".join(re.escape(w) for w in sorted(cfg.latest_pitch_verbs, key=len, reverse=True))
+    targets = "|".join(re.escape(w) for w in cfg.latest_pitch_targets)
+    parts = "|".join(
+        re.escape(w) for w in sorted(cfg.latest_pitch_particles, key=len, reverse=True)
+    )
+    follow = "|".join(re.escape(w) for w in cfg.latest_pitch_follow)
+    after = rf"(?=(?:{parts})|[?.!,~]|\s*$|\s+(?:{follow}))"
+    # 최근 낱말과 발표 낱말 사이: 꾸밈말(`latest_pitch_verbs`) 하나, 또는 문장 부호가 아닌 낱말 세 개까지("가장 최근에 연습을
+    # 시작한 발표" · "마지막으로 연습했던 게 어떤 발표", Issue #1194 독립 평가). 발표 낱말 뒤 조건(`after`)은 그대로라 "최근 발표할
+    # 때 떨려" · "최신 발표 트렌드"는 아니다
+    between = rf"(?P<mid>(?:{verbs})\s*|(?:\s*[^\s?.!,~]+){{0,3}}?\s*)"
+    pat = rf"(?:{words})(?:에|으로|로)?\s*{between}(?:{targets}){after}"
+    for hit in re.finditer(pat, m):
+        mid = hit.group("mid").split()
+        # 사이 낱말이 있으면 연습 이력을 말해야 한다("연습을 시작한" · "하던" · "연습했던 게 어떤"). "최근 들어 발표가 무서워요" ·
+        # "최근 친구 발표는 어땠어?"는 아니다(Issue #1194 코드 검수)
+        if not mid or any(
+            t.startswith(_PRACTICE_HINTS) or t in cfg.latest_pitch_verbs for t in mid
+        ):
+            return True
+    return False
+
+
+#: '가장 최근 발표' 판별에서 최근 낱말과 발표 낱말 사이에 오면 연습 이력을 말한다고 보는 낱말 머리
+_PRACTICE_HINTS = ("연습", "시작", "하던", "했던", "진행")
+
+
+def pitch_evidence(ctx: Any, pitch_id: str, field: str) -> str | None:
+    """이번 실행에 읽은 피치 목록 근거(`pitches[pitch_id=…].<field>`)의 id. 없거나 지금 판이 아니면 None."""
+    path = f"pitches[pitch_id={pitch_id}].{field}"
+    for eid, ev in ctx.registry.items.items():
+        if ev.path == path and ctx.registry.is_current(eid):
+            return eid
+    return None
+
+
+def practiced_at(p: Any) -> datetime | None:
+    """피치의 마지막 연습 시작 시각(시간대가 섞여도 같은 기준으로 견주게 읽는다). 없거나 읽을 수 없으면 None."""
+    try:
+        dt = datetime.fromisoformat(str(p.last_practiced_at).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
 
 
 def _route_of(parsed: dict[str, Any]) -> str:
@@ -221,6 +290,18 @@ class LoopState:
     #: 이 실행에서 목표 제안 카드로 낮춘 까닭(`GOAL_CONFLICT` · `UNMEASURABLE`, 카드 id 와 함께). 답에 그 까닭의 고정 문장을
     #: 코드가 붙인다(L6-08 · L6-23). 옛 상태에는 없어 빈 목록
     goal_proposals: list[dict[str, Any]] = field(default_factory=list)
+    #: 늘 같은 대응이 정답인 신호에 코드가 낸 요청(4-G): 아직 실행하지 않은 것(`{name, args, why}`)과 낸 요청의 열쇠. 옛 상태에는 없어 빈 목록
+    code_queue: list[dict[str, Any]] = field(default_factory=list)
+    code_done: list[str] = field(default_factory=list)
+    #: 이 실행에서 리뷰가 없다고 확인한 Take 번호(리뷰 절을 읽었는데 리뷰 없음). 답에 `NO_REVIEW` 문장을 붙이는 근거(4-E)
+    review_missing: list[int] = field(default_factory=list)
+    #: 기준을 바꾸는 다시 평가를 이번 판에서 막았다(R5(a)). 답에 고정 안내를 붙인다
+    targets_blocked: bool = False
+    #: 이어 부를 때 목표의 기준 Take 가 지워졌다고 BE 가 알렸다(`removed_sources`, CA-006). 답에 `GOAL_BASE_DELETED`를 붙인다
+    goal_base_deleted: bool = False
+    #: 처음 호출에서 정한 '가장 최근 발표' 질문 여부(4-A). 이어 부를 때 범위가 바뀌어도(`FETCH_PITCH`) 처음 판정을 쓴다.
+    #: 옛 상태에는 없어 None(그때는 지금 요청으로 정한다)
+    latest_q: bool | None = None
 
     def dump(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in self.__dataclass_fields__}
@@ -347,6 +428,9 @@ class Loop:
         self.lines: Any = None
         #: 상황 신호를 따라가는가(결정 로그 · 조사 데이터 블록 신호 중 하나라도 켜짐)
         self.tracking = self.cfg.decision_log or self.cfg.research_signals
+        #: 코드가 신호에 대응해 낸 요청의 까닭(호출 id → `<까닭> <대안>`)과 지금 처리하는 요청의 까닭(4-F)
+        self._pending_why: dict[str, str] = {}
+        self._call_why: str | None = None
         memory.sync_version(state, req.memory)
 
     # ── 모델 호출 공통 ───────────────────────────────────────────────
@@ -669,9 +753,10 @@ class Loop:
         if (
             route == "ANSWER_DIRECT"
             and self.cfg.research_prefetch
-            and goal_question(self.original, self.cfg)
+            and (goal_question(self.original, self.cfg) or self.latest_question)
         ):
-            # 대화 목표를 묻는 말은 읽은 대화 목표로 답한다: 기록 없이 답하기를 골라도 조사로 돌려 get_goals 를 먼저 읽는다(6-1 2번)
+            # 대화 목표를 묻는 말은 읽은 대화 목표로, 가장 최근 발표를 찾는 말은 읽은 피치 목록으로 답한다: 기록 없이 답하기를
+            # 골라도 조사로 돌려 get_goals · list_pitches 를 먼저 읽는다(6-1 2번, Issue #1194 독립 평가)
             route = "RESEARCH"
         if route == "OUT_OF_SCOPE":
             self.scope_reason = parsed.get("scope_reason")
@@ -891,6 +976,8 @@ class Loop:
         )
         step = None
         key = progress.call_key(name, args)
+        # 대안 단계의 까닭(4-F): 코드가 신호에 대응해 낸 요청은 그 까닭을, 모델이 본 신호에 다른 도구로 대응한 요청은 그 신호의 까닭을
+        why = self._call_why or (self._model_alt_why(name, args, key) if chosen else None)
         if self.cfg.plan_progress and self.st.plan_meta:
             step = progress.attach(
                 self.st.plan_meta,
@@ -899,11 +986,18 @@ class Loop:
                 max_steps=self.cfg.plan_steps_max,
                 key=key,
                 cached=tr.outcome == "CACHED",
+                why=why,
             )
             self._emit_plan_display()  # 바뀐 때만 plan 줄을 낸다
-        if not self.tracking:
+        if (
+            run.signal == "REVIEW_MISSING"
+            and run.take is not None
+            and run.take not in self.st.review_missing
+        ):
+            self.st.review_missing.append(run.take)
+        if not self.tracking and not self.cfg.code_signal_responses:
             return
-        if chosen and name in progress.RECORD_TOOLS:
+        if self.tracking and chosen and name in progress.RECORD_TOOLS:
             self._respond("ALT_TOOL", key=key, step=step, tool_seq=trace.seq)
         if run.signal is not None and tr.outcome != "CACHED":
             # 사실 표시(FACT_SHOWN)는 그 사실이 화면 단계에 실제로 붙었을 때만 남긴다(`plan_progress`가 꺼졌거나 단계가 8개로
@@ -912,7 +1006,90 @@ class Loop:
                 self._decide(
                     run.signal, run.facts, "FACT_SHOWN", "CODE", step=step, tool_seq=trace.seq
                 )
-            self.st.signals_open.append(progress.open_signal(run, key, step, trace.seq))
+            if self.cfg.code_signal_responses and run.signal in CODE_SIGNALS:
+                self._code_signal(run, args, step, trace.seq)
+            elif self.tracking:
+                self.st.signals_open.append(progress.open_signal(run, key, step, trace.seq))
+
+    def _model_alt_why(self, name: str, args: Any, key: str) -> str | None:
+        """모델이 고른 기록 도구가 대응을 기다리는 신호(이미 본 것, 같은 호출이 아님)에 대한 대안이면 그 단계의 `<까닭> <대안>`(4-F)."""
+        if name not in progress.RECORD_TOOLS:
+            return None
+        if self.st.plan_meta and progress.pick(self.st.plan_meta, name) is not None:
+            return None  # 계획에 그 도구로 할 일이 남아 있다: 계획대로 한 것이지 대안이 아니다
+        sig = next((s for s in self.st.signals_open if s["seen"] and s["key"] != key), None)
+        if sig is None:
+            return None
+        return f"{templates.PLAN_WHY.get(sig['signal'], '')} {_alt_name(name, args)}".strip()
+
+    def _code_signal(self, run: Any, args: Any, step: int | None, tool_seq: int | None) -> None:
+        """늘 같은 대응이 정답인 신호를 코드가 바로 처리한다(4-G, `code_signal_responses`). 모델에게 신호를 열지 않는다.
+
+        - 리뷰 없음: 그 Take 의 코치 기록(문제 구간 · 장별 값)을 아직 읽지 않았으면 코드가 읽는다(`REVIEW_MISSING:ALT_TOOL:CODE`).
+          읽을 것이 없으면 사실 표시로 끝(`NONE:CODE`)
+        - 기본 자료에 없음(범위 피치의 Take): 아직 가져오려 한 적이 없으면 코드가 `fetch_take`를 낸다(그 처리에서 `NOT_LOADED:ACTION:CODE`)
+        같은 요청은 한 번만 내고(`code_done`), 한 실행에 `code_signal_reads_max`개까지. 코드 읽기는 덧붙이는 대응이라 남은 도구 몫
+        안에서만 낸다(이 읽기 때문에 도구 한도로 멈춰 `PARTIAL`이 되지 않게). 이미 읽은(캐시에 있는) 기록은 다시 내지 않는다."""
+        sig = run.signal
+        budget_left = self.cfg.code_signal_reads_max - len(self.st.code_done)
+        if sig == "REVIEW_MISSING":
+            tid = getattr(args, "take_id", None)
+            tool_room = (
+                self.cfg.max_tool_calls
+                - self.counters.tool_calls
+                - sum(
+                    1 for q in self.st.code_queue if q["name"] not in ("fetch_take", "fetch_pitch")
+                )
+            )
+            queued = 0
+            for section in ("problem_segments", "slides"):
+                body = {"take_id": tid, "section": section}
+                ckey = json.dumps(["get_take_report", body], sort_keys=True)
+                if (
+                    tid is None
+                    or ckey in self.st.code_done
+                    or queued >= min(budget_left, tool_room)
+                ):
+                    continue
+                read = validate_args("get_take_report", body)
+                if not isinstance(read, str) and self._is_cached("get_take_report", read):
+                    continue  # 모델이 이미 읽었다: 대안으로 다시 내지 않는다(같은 단계 · 결정 로그가 겹치지 않게)
+                self.st.code_done.append(ckey)
+                why = f"{templates.PLAN_WHY['REVIEW_MISSING']} {templates.PLAN_ALT_COACH}"
+                self.st.code_queue.append({"name": "get_take_report", "args": body, "why": why})
+                queued += 1
+            if self.tracking:
+                self._decide(
+                    sig,
+                    run.facts,
+                    "ALT_TOOL" if queued else "NONE",
+                    "CODE",
+                    step=step,
+                    tool_seq=tool_seq,
+                )
+        elif sig == "NOT_LOADED":
+            names = ("take_id", "current_take_id", "previous_take_id")
+            missing = [
+                t
+                for t in (getattr(args, n, None) for n in names)
+                if t and t in self.ctx.summaries and t not in self.ctx.snapshots
+            ]
+            if not missing or budget_left <= 0:
+                return
+            tid = missing[0]
+            fkey = json.dumps(["fetch_take", tid])
+            if fkey in self.st.prefetched or fkey in self.st.code_done:
+                return  # 이미 가져오려 했다(실패했으면 다시 내지 않는다)
+            self.st.code_done.append(
+                fkey
+            )  # 선읽기 몫(`prefetched`)은 쓰지 않는다(조사 흐름의 한도와 따로)
+            self.st.code_queue.append(
+                {
+                    "name": "fetch_take",
+                    "args": {"take_id": tid, "reason": "읽으려던 연습 기록이 기본 자료에 없음"},
+                    "why": None,
+                }
+            )
 
     def _decide(
         self,
@@ -988,7 +1165,7 @@ class Loop:
         step = None
         if self.cfg.plan_progress and self.st.plan_meta:
             if reason in progress.LIMIT_STOPS:
-                step = progress.mark_short(self.st.plan_meta)
+                step = progress.mark_short(self.st.plan_meta, self.cfg.plan_steps_max)
                 self._emit_plan_display()
             else:
                 step = progress.current_step(self.st.plan_meta)
@@ -1000,6 +1177,17 @@ class Loop:
         elif reason == RESUME_RESERVE_STOP:
             # 출력 예약이 모자라 재개 조사를 코드가 건너뛰었다(끝 상태는 turn.py 가 요청 해소로 정한다)
             self._decide("BUDGET_LOW", ["TOKENS"], "STEP_SKIPPED", "CODE", step=step)
+
+    def mark_answer_short(self, reason: str) -> None:
+        """조사는 끝났는데 답 쓰기가 한도 · 시간으로 실패했다(실패 로그 path-fail-budget-partial, Issue #1194 4-D): 조사 끝
+        (`_research_end`)과 같이, 하는 중인 단계(없으면 첫 미완 단계 — 답 쓰기 단계일 수 있다)에 `시간 부족`을 달고
+        `BUDGET_LOW · STOP_PARTIAL:CODE`를 남긴다. 그래서 화면의 남은 일과 결정 로그가 끊긴 까닭을 보인다."""
+        step = None
+        if self.cfg.plan_progress and self.st.plan_meta:
+            step = progress.mark_short(self.st.plan_meta, self.cfg.plan_steps_max)
+            self._emit_plan_display()
+        if self.tracking:
+            self._decide("BUDGET_LOW", [reason], "STOP_PARTIAL", "CODE", step=step)
 
     def close_signals(self) -> None:
         """대응이 없던 신호마다 `NONE:LLM` 한 줄을 남기고 비운다(조사가 끝날 때, 조사 없이 끝나는 응답은 turn.py 가 끝에서)."""
@@ -1025,7 +1213,7 @@ class Loop:
             if self.cancelled():
                 self.st.research_done, self.st.stop_reason = True, "CLIENT_DISCONNECTED"
                 break
-            pre = self._prefetch_calls()
+            pre = self._code_calls() or self._prefetch_calls()
             if pre:
                 # 조사 흐름: 판단 초안이 집은 기록을 모델이 고르기 전에 코드가 먼저 읽는다(모델 호출 없음)
                 calls, said, model_seq = pre, "", None
@@ -1083,6 +1271,8 @@ class Loop:
                             "arguments": call.raw_args
                             or json.dumps(call.args or {}, ensure_ascii=False),
                         },
+                        # 공급자가 붙여 보낸 칸은 받은 그대로 돌려준다(Gemini 는 없으면 다음 호출이 400)
+                        **({"extra_content": call.extra} if getattr(call, "extra", None) else {}),
                     }
                 )
                 self.st.processed_calls.append(call.id)
@@ -1211,6 +1401,7 @@ class Loop:
                         and not (tr.data or {}).get("items")
                     ):
                         self.st.name_not_found = True
+                        self._fetch_pitch_by_name(args.query)
                     if call.name == "search_guides" and (
                         tr.ok or (tr.error or {}).get("code") == "CORPUS_UNAVAILABLE"
                     ):
@@ -1228,7 +1419,9 @@ class Loop:
                 self.emit("tool_done", {"trace": trace.model_dump()})
                 self._tool_diag(tr, trace, model_seq, args)
                 if call.name != "update_plan":
+                    self._call_why = self._pending_why.pop(call.id, None)
                     self._after_tool(call.name, args, tr, trace, chosen=not pre)
+                    self._call_why = None
                 elif tr.ok and self.tracking and not pre:
                     self._respond("PLAN_EDIT", tool_seq=trace.seq)
                 self.st.message_deps[call.id] = list(tr.target_ids) + (
@@ -1264,6 +1457,57 @@ class Loop:
         self._research_end()
         return None
 
+    def _pitch_fetched(self) -> bool:
+        """이번 실행에 피치 가져오기가 이미 있었는가(실행했거나 행동으로 냈음)."""
+        pending = (self.st.pending_action or {}).get("type") == "FETCH_PITCH"
+        return pending or any(e.get("type") == "FETCH_PITCH" for e in self.st.executed)
+
+    def _fetch_pitch_by_name(self, name: str) -> None:
+        """이름으로 찾은 피치가 기본 자료에 없고 전체 피치 수가 실린 수보다 많으면(기본 자료는 최근 피치 일부만, 5-3) 코드가 그 이름으로
+        가져오기를 낸다(Issue #1194 독립 평가 — 모델이 가져오지 않고 '발표를 찾을 수 없어요'로 끝냈다). 같은 이름은 한 번만, 코드
+        대응 몫(`code_signal_reads_max`) 안에서. 가져오기가 실패하면 그때 '발표를 찾을 수 없어요'와 대안 · 다음 걸음이 나간다."""
+        total = self.ctx.pitches_total or 0
+        if (
+            total <= len(self.ctx.pitches)
+            or len(self.st.code_done) >= self.cfg.code_signal_reads_max
+        ):
+            return
+        if self._pitch_fetched():
+            return
+        fkey = json.dumps(["fetch_pitch", name], ensure_ascii=False)
+        if fkey in self.st.code_done:
+            return
+        self.st.code_done.append(fkey)
+        self.st.code_queue.append(
+            {
+                "name": "fetch_pitch",
+                "args": {"name": name, "reason": "찾는 발표가 기본 자료의 최근 목록에 없음"},
+                "why": None,
+            }
+        )
+
+    def _code_calls(self) -> list[ToolCall]:
+        """신호에 대한 코드 대응(4-G, `_code_signal`)이 낸 요청. 조사 흐름의 선읽기(`research_prefetch`)와 따로 처리한다.
+        행동(가져오기)은 한 번에 하나이므로 읽기를 앞에 둔다."""
+        if not self.st.code_queue:
+            return []
+        queue, self.st.code_queue = self.st.code_queue, []
+        if self._pitch_fetched():
+            # 모델이 같은 응답에서 이미 가져왔으면(실행했거나 승인을 기다림) 코드의 이름 가져오기는 버린다(되풀이 막기, 코드 검수)
+            queue = [q for q in queue if q["name"] != "fetch_pitch"]
+            if not queue:
+                return []
+        queue.sort(key=lambda q: q["name"] in ("fetch_take", "fetch_pitch"))
+        calls = []
+        for q in queue:
+            cid = f"cs-{len(self.st.code_done)}-{len(calls)}"
+            while cid in self.st.processed_calls:
+                cid += "r"
+            calls.append(ToolCall(id=cid, name=q["name"], args=q["args"]))
+            if q.get("why"):
+                self._pending_why[cid] = q["why"]
+        return calls
+
     def _prefetch_calls(self) -> list[ToolCall]:
         """조사 흐름(6-1 2번 앞): 계획의 판단 초안이 집은 대상을 모델이 고르기 전에 코드가 먼저 읽을 요청 목록.
 
@@ -1278,7 +1522,12 @@ class Loop:
         # 공통 한도(`research_prefetch_max`)는 계획한 자료 검색어(`max_guide_queries`개까지)에 먼저 나누고, 남은 몫을 기록 읽기가 쓴다.
         # 자료 검색은 앞에 둔다: 기록을 가져오는 행동(fetch_take)은 한 번에 하나이고 그 뒤 요청은 실행하지 않는다
         guides = self._guide_prefetch_calls()
-        reads = [*guides, *self._goal_prefetch_calls(), *self._prefetch_record_calls()]
+        reads = [
+            *guides,
+            *self._latest_prefetch_calls(),
+            *self._goal_prefetch_calls(),
+            *self._prefetch_record_calls(),
+        ]
         if reads:
             return reads  # 읽기를 먼저 마친다(가져오기 · 다시 평가는 행동이라 그 뒤 요청은 실행하지 않는다)
         return self._same_condition_reassess_calls()
@@ -1364,6 +1613,51 @@ class Loop:
         rest = _TAKE_MENTION_RE.sub(" ", rest)
         return bool(_NEW_TARGET_RE.search(rest)) or clm.states_condition(rest)
 
+    @property
+    def latest_question(self) -> bool:
+        """처음 범위가 '전체'이고 가장 최근 발표를 찾는 말인가(4-A). 처음 호출에서 정해 서명 상태(`latest_q`)에 남기므로, 이어 부른
+        뒤 범위가 바뀌어도(`req.run.scope_pitch_id`는 지금 대화 범위다) 처음 판정을 쓴다."""
+        if self.st.latest_q is None:
+            self.st.latest_q = self.req.run.scope_pitch_id is None and latest_pitch_question(
+                self.original, self.cfg
+            )
+        return self.st.latest_q
+
+    def latest_practiced(self) -> tuple[list[Any], Any | None] | None:
+        """'가장 최근 발표'의 대상(4-A): (이번 실행에 목록을 읽었고 연습을 시작한 피치들, 그중 마지막 연습 시작이 가장 늦은 피치).
+        피치 목록을 읽지 않았으면 None, 연습을 시작한 피치가 없으면 ([], None). 코드 기록 문장(turn.py)과 모델 문장 검사
+        (answer.py)가 같은 대상을 쓴다."""
+        read = [p for p in self.ctx.pitches if pitch_evidence(self.ctx, p.pitch_id, "take_count")]
+        if not read:
+            # 이름 검색 없이 목록을 읽었는데 피치가 하나도 없다: 읽지 않은 것이 아니라 연습을 시작한 피치가 없는 것이다
+            # (Issue #1194 독립 평가 — 전에는 None 으로 보아 '아직 연습을 시작한 발표가 없어요.' 대신 PARTIAL 로 끝났다)
+            listed = json.dumps(
+                ["list_pitches", {"query": None}], sort_keys=True
+            ) in self.st.prefetched or any(
+                m.get("ran") == "list_pitches" for m in self.st.plan_meta
+            )
+            if listed and not self.ctx.pitches and not (self.ctx.pitches_total or 0):
+                return [], None
+            return None
+        practiced = [p for p in read if practiced_date(p.last_practiced_at) and practiced_at(p)]
+        if not practiced:
+            return [], None
+        return practiced, max(practiced, key=lambda p: practiced_at(p))
+
+    def _latest_prefetch_calls(self) -> list[ToolCall]:
+        """가장 최근 발표 질문(4-A)이면 조사 첫머리에 코드가 피치 목록(`list_pitches`, 이름 검색 없음)을 먼저 읽는다.
+
+        모델이 순서의 뜻을 모른 채 맨 앞 피치를 고르거나, 목록을 읽고도 그 근거로 말하지 못하는 일(dev, 2026-11-10)을 막는다.
+        대상은 답 쓰기 뒤 코드가 목록의 마지막 연습 시작으로 고르고 그 근거로 기록 문장을 낸다(turn.py `_latest_pitch_claims`).
+        이미 읽었거나 낸 요청이면 다시 내지 않는다(같은 한도 · 같은 길)."""
+        if not self.cfg.research_prefetch or not self.latest_question:
+            return []
+        key = json.dumps(["list_pitches", {"query": None}], sort_keys=True)
+        if key in self.st.prefetched or len(self.st.prefetched) >= self.cfg.research_prefetch_max:
+            return []
+        self.st.prefetched.append(key)
+        return [ToolCall(id=self._pf_id(), name="list_pitches", args={"query": None})]
+
     def _goal_prefetch_calls(self) -> list[ToolCall]:
         """대화 목표를 묻는 말(`goal_question`)이면 조사 첫머리에 `get_goals`를 먼저 읽는다(6-1 2번, 같은 한도 · 같은 길).
 
@@ -1431,6 +1725,10 @@ class Loop:
         for d in self.st.drafts:
             if d.get("type") not in ("MEASURED", "REQUEST"):
                 continue
+            if d.get("type") == "REQUEST" and any(
+                w in str(d.get("quote") or "") for w in self.cfg.definition_question_words
+            ):
+                continue  # 뜻 · 개념을 묻는 말: 기록 값이 답이 아니다
             sub = d.get("subject") or {}
             metric = sub.get("metric")
             dim = sub.get("dimension")
@@ -1500,7 +1798,7 @@ class Loop:
             if missing:
                 tid = missing[0]
                 fkey = json.dumps(["fetch_take", tid])
-                if fkey in self.st.prefetched:
+                if fkey in self.st.prefetched or fkey in self.st.code_done:
                     continue  # 이미 가져오려 했는데 아직 없다 = 실패했다(다시 내지 않는다)
                 if len(self.st.prefetched) >= self.cfg.research_prefetch_max:
                     break
@@ -1661,6 +1959,8 @@ class Loop:
         )
         atype = act.ACTION_TOOL_TYPE.get(call.name, "FETCH_PITCH")
         if p.result == "TOOL_ERROR":
+            if p.reason_code == "TARGETS_NOT_SUPPORTED":
+                self.st.targets_blocked = True  # 답에 할 수 없다는 고정 안내를 코드가 붙인다(R5(a))
             return {"message": p.tool_message, "valid": False}
         self.diag.step(
             "ACTION",
@@ -1720,6 +2020,12 @@ class Loop:
         if not removed:
             return True
         rs = set(removed)
+        # 목표의 기준 Take 가 지워졌다는 명시적 신호(CA-006): 이 실행이 읽은 대화 목표의 기준 값 근거가 그 Take 에 기댔다
+        if any(
+            ev.path.startswith("conversation_goal.base") and ev.take_id in rs
+            for ev in self.ctx.registry.items.values()
+        ):
+            self.st.goal_base_deleted = True
         self.ctx.registry.drop_sources(rs)
         # 비교할 수 없다는 기록도 그 Take 에 기댄다(지워진 기록의 완료 여부 · 버전을 다시 말하지 않게)
         self.st.not_comparable = [
@@ -1808,6 +2114,8 @@ class Loop:
         rec = {
             "action_id": pending["action_id"],
             "type": pending["type"],
+            # 행동 대상 Take(다시 평가 · 가져오기). 답 문장이 그 Take 의 요청인지 가리는 데 쓴다(`answer.py` `_action_answers`)
+            "take_id": (pending.get("args") or {}).get("take_id"),
             "status": "SUCCEEDED" if applied.ok else ("MISMATCH" if applied.mismatch else "FAILED"),
             "success_text": applied.success_text,
             "reason_code": applied.reason_code,
@@ -2033,14 +2341,16 @@ class Loop:
         dim = ev.path.rsplit(".dimensions.", 1)[-1] if ".dimensions." in ev.path else None
         return set(self.cfg.dimensions[dim].metrics) if dim in self.cfg.dimensions else set()
 
-    def question_targets(self) -> list[tuple[dict[str, Any], set[int], int | None, set[str]]]:
+    def question_targets(
+        self, drafts: list[dict[str, Any]] | None = None
+    ) -> list[tuple[dict[str, Any], set[int], int | None, set[str]]]:
         """판단 초안(기록 질문 · 주장 `MEASURED` · `REQUEST`) 중 대상을 집은 것마다 `(초안, Take 번호, 장, 지표)`.
 
         Take · 장 · 지표 · 차원 중 하나라도 집어야 대상이 있는 초안이다(차원은 그 차원의 지표로). Take 를 말하지 않았으면
         판정 대상 Take(6-3)로 채운다(기본 자료에 없으면 빈 채로 — 어느 Take 든 맞음). 빈 목록이면 질문이 대상을 집지 않은 것이다."""
         out: list[tuple[dict[str, Any], set[int], int | None, set[str]]] = []
         num_of = {tid: s.take_number for tid, s in self.ctx.summaries.items()}
-        for d in self.st.drafts:
+        for d in self.st.drafts if drafts is None else drafts:
             if d.get("type") not in ("MEASURED", "REQUEST"):
                 continue
             sub = d.get("subject") or {}

@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import Any, Literal
 
@@ -737,3 +738,14 @@ def range_for(
         OmittedDataError: 경계를 읽을 경로가 크기 때문에 빠졌을 때. 호출한 쪽은 `OMITTED`로 보류한다.
     """
     return range_sources(snapshot, metric, slide_number, cfg)[0]
+
+
+def volume_base_source(snap: TakeSnapshot | None) -> str | None:
+    """그 Take 의 기준 음량 출처(`take_result.areas.VOLUME.take.base_level_source`, 예 `CALIBRATION` · `TAKE`). 없으면 None.
+
+    소리 크기 비교(goals.py)와 표기(claims.py `volume_base`)가 같은 곳을 읽게 한다."""
+    tr = snap.results.take_result if snap is not None else None
+    area = (tr.get("areas") or {}).get("VOLUME") if isinstance(tr, Mapping) else None
+    take = area.get("take") if isinstance(area, Mapping) else None
+    src = take.get("base_level_source") if isinstance(take, Mapping) else None
+    return src if isinstance(src, str) else None

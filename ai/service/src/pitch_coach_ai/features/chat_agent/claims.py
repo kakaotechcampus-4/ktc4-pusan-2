@@ -54,6 +54,7 @@ from .values import (
     read_dimension_state,
     read_metric,
     read_problems,
+    volume_base_source,
 )
 
 VersionOf = Callable[[TakeSnapshot], RecordVersion]
@@ -61,12 +62,18 @@ VersionOf = Callable[[TakeSnapshot], RecordVersion]
 #: 대본 사용 주장의 지표 이름(모델이 명시한다). 지표 표에는 없는 가상 이름이다
 SCRIPT_USE_METRIC = "script_mode"
 #: 대본 · 원고를 보거나 띄우거나 들고 읽으며 했다는 말("대본 보고 했어" · "화면에 대본을 띄워 놓고" · "종이 원고를 손에 들고
-#: 읽으면서", final60 re-contest-script-highlight · re-docent-paper-script). '안 보고'처럼 사이에 부정이 끼면 맞지 않는다
+#: 읽으면서", final60 re-contest-script-highlight · re-docent-paper-script). 명사와 동사 사이에 조사와 낱말 두 개까지 낄 수
+#: 있다("대본을 전부 띄워" · "프롬프터 화면에 핵심어를 띄워", Issue #1194 독립 평가). '안 보고' · '없이'처럼 사이에 부정이
+#: 끼면 맞지 않는다
 _SCRIPT_USE_RE = re.compile(
-    r"(대본|원고|스크립트|프롬프터)\s*(을|를)?\s*(?:손에\s*)?"
-    r"(보고|보면서|보며|켜고|켜\s*놓고|띄우고|띄워|사용하고|사용해서|사용했|사용하며|사용하면서"
+    r"(?:대본|원고|스크립트|프롬프터)(?:을|를|은|는|이|가|도|만|에|에서)?\s*"
+    r"(?:(?!(?:안|못)\s|않|없이|없고|없는|없었|말고|대신|빼고)"
+    r"(?:(?:핵심어|키워드|내용|문장|일부|전체|전부|절반)\S*|\S*[^\s을를])\s+){0,2}?"
+    r"(?:보고|보면서|보며|봤|켜고|켜\s*놓고|켜\s*두고|띄우고|띄워|띄웠|사용하고|사용해서|사용했|사용하며|사용하면서"
     r"|들고|읽으면서|읽으며|읽고|읽었)"
 )
+#: 관형 과거로 끝낸 진술("참고한 거라서요" · "띄워 놓고 한 연습이었어요"): 과거 글자(`_PAST_CHARS`)가 없어도 지난 일을 말한다
+_PAST_ADNOMINAL_RE = re.compile(r"(?:한|던)\s*(?:거|것|게|발표|연습|리허설|테이크|Take)")
 CLAIM_OPS = ("OVERALL", "ISSUE", "VALUE", "CHANGE")
 
 #: 근거 문구용 표시 이름
@@ -104,21 +111,22 @@ STATE_WORD: dict[str, str] = {
     "STABLE": "유지",
     "NOT_EVALUABLE": "평가 불가",
 }
+#: 문제 이름의 표시 글. '~ 구간' 앞에 붙어도 자연스러운 이름꼴로 쓴다('작은 목소리 구간', '목소리가 작음 구간' 아님)
 ISSUE_LABEL: dict[str, str] = {
     "GAZE_LOW_EYE_CONTACT": "청중 시선 부족",
     "GAZE_AWAY": "시선 이탈",
     "GAZE_ON_SCRIPT": "대본 응시",
     "GAZE_ON_SCREEN": "화면 응시",
-    "PACE_FAST": "말이 빠름",
-    "PACE_SLOW": "말이 느림",
+    "PACE_FAST": "빠른 말 속도",
+    "PACE_SLOW": "느린 말 속도",
     "LONG_SILENCE": "긴 침묵",
     "BEHIND_SCHEDULE": "시간 배분 지연",
     "AHEAD_OF_SCHEDULE": "시간 배분 앞섬",
     "SLIDE_OVER": "장 시간 초과",
     "TIME_OVER": "발표 시간 초과",
     "FINAL_MINUTE": "마지막 1분",
-    "VOLUME_LOW": "목소리가 작음",
-    "FILLER_FREQUENT": "군더더기 잦음",
+    "VOLUME_LOW": "작은 목소리",
+    "FILLER_FREQUENT": "잦은 군더더기",
     "CONTENT": "빠뜨리거나 틀린 핵심 내용",
 }
 #: 같은 지표의 반대 방향 문제 (6-3 ISSUE '반대 방향 문제만 있음')
@@ -236,10 +244,7 @@ VOLUME_BASE_UNKNOWN = "기준"
 
 def volume_base(snap: TakeSnapshot | None) -> str | None:
     """그 Take 의 기준 음량 출처(`CALIBRATION` · `TAKE`). 결과가 없거나 출처를 못 잡았으면 None."""
-    tr = snap.results.take_result if snap is not None else None
-    area = (tr.get("areas") or {}).get("VOLUME") if isinstance(tr, Mapping) else None
-    take = area.get("take") if isinstance(area, Mapping) else None
-    src = take.get("base_level_source") if isinstance(take, Mapping) else None
+    src = volume_base_source(snap)
     return src if src in VOLUME_BASE_WORD else None
 
 
@@ -379,6 +384,11 @@ _SLIDE_REF = re.compile(r"\d+\s*(?:번\s*)?장|슬라이드\s*\d+")
 _PAST_CHARS = "았었였했랐렸겼웠봤됐"
 
 
+def _says_past(text: str) -> bool:
+    """지난 일을 말하는가: 과거 글자 또는 관형 과거('한 거' · '한 발표')."""
+    return any(ch in text for ch in _PAST_CHARS) or bool(_PAST_ADNOMINAL_RE.search(text))
+
+
 def _measure_hits(text: str, cfg: ChatAgentConfig, offset: int = 0) -> list[tuple[int, int, str]]:
     """글 속 측정 항목 낱말의 (시작, 끝, 차원). 제외 낱말(예: '실시간') 안에서 맞은 것은 세지 않는다.
 
@@ -448,6 +458,34 @@ def _states_my_fact(clause: str, draft: AssessmentDraft) -> bool:
     if draft.type == "KNOWLEDGE":
         return ref  # 발표법 주장은 과거형이어도('~라고 했어') 유형을 유지한다
     return ref or past  # PREFERENCE
+
+
+def forced_unverifiable_quotes(
+    user_message: str, drafts: Sequence[AssessmentDraft], cfg: ChatAgentConfig
+) -> set[str]:
+    """사용자 말을 잘못 나눠(유형 · 대상 불일치 · 섞인 인용, `FORCED_UNVERIFIABLE`) 확인할 수 없게 된 초안의 `quote`.
+    요청 해소 검사(turn.py, Issue #1194 4-B)는 이 초안을 세지 않는다."""
+    valid, problems, valid_idx = _split_check_indexed(user_message, drafts, cfg)
+    bad = {p.draft_index for p in problems if p.code in FORCED_UNVERIFIABLE}
+    return {d.quote for i, d in enumerate(drafts) if i in bad}
+
+
+#: 남의 말 · 앞 답을 되받아 옮기는 꼴('…다고 하는데' · '…라고 하셨는데')
+_REPORTED = re.compile(
+    r"(?:다|라)고\s?(?:하는데|했는데|하셨는데|하시는데|하니|해서|하던데)|(?:다|라)던데"
+)
+
+
+def restates_previous_answer(quote: str, previous_answer: str | None) -> bool:
+    """초안의 인용이 직전 어시스턴트 답을 되받아 옮긴 말인가: 옮기는 꼴('…다고 하는데')이 있고, 그 앞 내용의 낱말(두 글자 이상의
+    한글 낱말 앞 두 글자) 하나 이상이 직전 답에 있다. 그러면 사용자가 확인을 청한 주장이 아니라 앞 답을 받아 다음 말을 이은 것이다."""
+    if not previous_answer:
+        return False
+    m = _REPORTED.search(quote)
+    if m is None:
+        return False
+    words = re.findall(r"[가-힣]{2,}", quote[: m.start()])
+    return any(w[:2] in previous_answer for w in words)
 
 
 def split_check(
@@ -768,15 +806,13 @@ def _script_statement_as_claim(draft: AssessmentDraft) -> AssessmentDraft:
             (
                 t.strip()
                 for t in _SENTENCE_RE.findall(quote)
-                if _SCRIPT_USE_RE.search(t)
-                and any(ch in t for ch in _PAST_CHARS)
-                and not _ASK_END_RE.search(t)
+                if _SCRIPT_USE_RE.search(t) and _says_past(t) and not _ASK_END_RE.search(t)
             ),
             "",
         ).rstrip(".!。！")
         if not quote:
             return draft
-    elif not any(ch in quote for ch in _PAST_CHARS):
+    elif not _says_past(quote):
         return draft
     subject = draft.subject.model_copy(
         update={"dimension": "script_independence", "metric": SCRIPT_USE_METRIC}
@@ -1004,6 +1040,14 @@ def _one_issue(d: AssessmentDraft, t: _Target, dim: str, ctx: _Ctx) -> _One:
         for issue, words in ctx.cfg.issue_words.items()
         if issue in spec.issues and any(w in d.quote for w in words)
     ]
+    if not claimed:
+        # 문제 낱말 없이 지표로만 말한 문제 주장("대본 응시 비율이 너무 높은거같아"): 그 차원에서 그 지표에 걸리는 문제가 한 방향뿐이면
+        # (반대 방향 문제가 없으면) 그 문제로 본다. 방향이 둘인 차원(빠름 · 느림)은 낱말이 있어야 한다(Issue #1194 화면 검토 —
+        # 문제 구간이 있는데 '확인 불가'로 답해 값 문장과 어긋나 보임)
+        metric = _metric_for(d, dim)
+        inferred = [i for i in spec.issues if metric in ctx.cfg.issue_metrics.get(i, ())]
+        if inferred and not any(i in _OPPOSITE_ISSUE for i in inferred):
+            claimed = inferred
     if not claimed:
         return _unv("NO_ISSUE_WORD")
     types = tuple(
@@ -1771,6 +1815,7 @@ def finalize(
     script_used: bool | None | _Unset = UNSET,
     guide_texts: Mapping[str, str] | None = None,
     guide_titles: Mapping[str, str] | None = None,
+    restated: set[str] | None = None,
 ) -> FinalizeResult:
     """판단 초안을 코드가 확정한다: 판정 · 키 · 근거 지문 · 압력 · 대체 · 첫 문장.
 
@@ -1885,6 +1930,14 @@ def finalize(
                 if state_facts
                 else templates.UNVERIFIABLE.format(quote=d.quote)
             )
+        elif restated and d.quote in restated:
+            # 사용자가 앞 답을 되받아 말한 것('작게 말했다고 하는데 …')은 확인을 청한 주장이 아니다: 판정 첫 문장을 그리지 않는다
+            # (앞 답이 기록으로 확인해 준 것을 '확인 불가'로 다시 말하면 앞 답과 어긋나 보인다, Issue #1194 화면 검토)
+            sentence = ""
+        elif verdict == "UNVERIFIABLE" and _asks(d.quote):
+            # 물음 꼴의 말('나아졌는지' · '올랐어?')은 확인을 청한 것이다: 판정할 수 없으면 '이 기록으로는 확인할 수 없어요'로
+            # 되받지 않고 답(비교할 수 없는 까닭 · 없음 근거 · 값)이 말한다(Issue #1194 읽듯 보는 검토 — 질문을 주장처럼 받음)
+            sentence = ""
         elif d.type == "REQUEST" and (verdict in ("SUPPORTED", "UNVERIFIABLE") or not phrase):
             # 요청 · 정보 질문은 참 · 거짓을 가릴 사실 주장이 아니다: '이 기록으로는 확인할 수 없어요'를 붙이지 않는다.
             # 요청에 응할 수 없으면 답 · 행동 결과가 그 까닭을 말한다(근거가 있고 기록과 어긋난 요청만 템플릿 문장을 쓴다)
@@ -1910,6 +1963,20 @@ def finalize(
     dropped = any(p.code in FORMAT_PROBLEMS for p in problems)
     notice = [templates.SystemText.NOT_VERIFIED_CLAIM.value] if dropped else []
     return FinalizeResult(outcomes, uncovered, notice, problems)
+
+
+#: 물음으로 끝나는 말의 끝(인용이 물음표 앞에서 끊겨도 알아본다)
+_QUESTION_END = re.compile(r"(\?|는지|는가|나요|까요|을까|ㄹ까|었어\?|았어\?)\s*$")
+
+
+#: 확인을 구하는 꼴('컸지?' · '맞죠?' · '잘했잖아')은 물음이 아니라 주장이다(판정 문장을 그대로 쓴다, obj-unverifiable-volume)
+_TAG_END = re.compile(r"((?<!는)지\s*\?|죠\s*\??|지요\s*\??|잖아요?\s*\??)\s*$")
+
+
+def _asks(quote: str) -> bool:
+    """판단 초안의 인용이 물음인가: 물음표로 끝나거나 '…는지' · '…나요' · '…까요'로 끝난다. 확인을 구하는 꼴은 물음이 아니다."""
+    q = quote.strip()
+    return bool(_QUESTION_END.search(q)) and not _TAG_END.search(q)
 
 
 # ── 목표 요청 충돌 ────────────────────────────────────────────────────────

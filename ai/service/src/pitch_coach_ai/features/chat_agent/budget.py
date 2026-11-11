@@ -220,7 +220,8 @@ class Budget:
         return self.counters.model_calls > self.cfg.max_model_calls - self.cfg.reserved_answer_calls
 
     def call_timeout(self, kind: ModelKind) -> float:
-        """이번 시도의 시간 제한(초). 조사는 답 몫 24초를 빼고, 답 쓰기 · 고치기는 남은 시간 안에서 12초."""
+        """이번 시도의 시간 제한(초). 조사는 답 몫 24초를 빼고 12초, 답 쓰기는 몫 안에서 18초(고치기 몫 6초를 남김), 고치기는 남은
+        시간 안에서 12초(Issue #1194: 답 쓰기 · 고치기 몫의 합 24초는 그대로, 나누는 비율만 실측 시간에 맞춤)."""
         per_call = self.cfg.reserved_answer_seconds / max(1, self.cfg.reserved_answer_calls)
         left = self.left()
         if kind == "RESEARCH":
@@ -228,6 +229,11 @@ class Budget:
         if kind == "HISTORY_SUMMARY":
             # 대화 요약은 끝 줄을 만들어 보낼 몫을 남긴다(6-14)
             return max(0.0, min(per_call, left - self.cfg.final_line_reserve_seconds))
+        if kind == "ANSWER":
+            # 고치기 몫(최소 fix_min_seconds)을 남기되, 남은 시간이 그보다 적으면 남은 시간 안에서 per_call 까지
+            room = left - self.cfg.fix_min_seconds
+            cap = self.cfg.answer_call_seconds if room >= per_call else per_call
+            return max(0.0, min(cap, max(room, min(per_call, left))))
         return max(0.0, min(per_call, left))
 
     def summary_room(self) -> bool:

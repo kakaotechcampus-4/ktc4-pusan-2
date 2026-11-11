@@ -1,0 +1,87 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-13",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "리뷰가 목소리를 우선 개선으로 꼽았는데 어느 장 · 얼마나 — 4장 소리 작음 문제 구간과 기준 대비 2.4dB 작게를 엮어 답함",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-soc",
+        "title": "사회적 기업 사례 발표",
+        "last_practiced_at": "2026-11-08T13:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "soc-t2",
+            "take_number": 2,
+            "started_at": "2026-11-04T13:00:00+09:00",
+            "completed_at": "2026-11-04T13:05:00+09:00",
+            "result": {"voice_diff_db": -1.1},
+            "review": {"dimensions": {"vocal_delivery": "STABLE"}, "score": 74}
+          },
+          {
+            "take_id": "soc-t3",
+            "take_number": 3,
+            "started_at": "2026-11-08T13:00:00+09:00",
+            "completed_at": "2026-11-08T13:05:00+09:00",
+            "result": {"voice_diff_db": -2.4, "issues": [["VOLUME_LOW", 4, true]]},
+            "review": {"dimensions": {"vocal_delivery": "PRIORITY"}, "score": 68}
+          }
+        ]
+      }
+    ],
+    "conversation": {"scope_pitch_id": "p-soc"}
+  },
+  "turns": [
+    {
+      "message": "Take 3 리뷰에서 목소리 쪽이 우선 개선으로 나왔던데, 몇 장에서 목소리가 작아졌고 기준보다 얼마나 작았는지, 다음엔 뭘 해 보면 좋을지 알려 주세요.",
+      "page_take_id": "soc-t3"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "read-before-record",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": ["tool:get_take_report:*", "claim:RECORD"],
+        "metric": "path"
+      },
+      {
+        "check_id": "slide4-target",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {"slide": 4},
+        "grader": "target",
+        "note": "문제 구간 VOLUME_LOW 4장(믿을 만함)"
+      },
+      {
+        "check_id": "voice-diff",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "2.4dB",
+        "grader": "number",
+        "derive": "soc-t3:VOLUME.voice_diff_db",
+        "note": "소리 크기는 크기만 쓴다(6-9 소리 크기 표기, 음수는 '작게')"
+      },
+      {
+        "check_id": "record-evidence",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "path": "has_record_evidence"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "Take 3: voice_diff_db -2.4(Take · 모든 장 같음, 기준 음량 출처 CALIBRATION → '점검 때보다 2.4dB 작게'), 문제 구간 VOLUME_LOW 4장, 리뷰 우선 개선 vocal_delivery."
+}

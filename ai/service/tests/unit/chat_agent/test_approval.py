@@ -174,6 +174,37 @@ def test_confirm_card_expires_30_minutes_after_issue_and_state_lasts_35() -> Non
     assert DEFAULT_CONFIG.state_ttl_ask_seconds == 35 * 60
 
 
+@pytest.mark.parametrize(
+    "msg",
+    [
+        "대본 보고 한 발표였어. 대본을 쓴 조건으로 다시 평가해 볼 수 있을까요?",
+        # 실사용 흐름 점검 장면 4: '다시 평가' 낱말 없이 청한 말도 같다
+        "대본 보고 한 발표였어. 대본 사용 조건으로 다시 확인해줘",
+    ],
+)
+def test_reassess_request_clause_is_answered_by_the_card_not_an_unchecked_notice(msg: str) -> None:
+    """초안이 덮지 않은 다시 평가 요청 절('대본을 쓴 조건으로 다시 평가해 볼 수 있을까요')은 이 실행이 낸 확인 카드가 답이라
+    '이번 답에서 확인하지 못했어요'를 붙이지 않는다(Issue #1194 읽듯 보는 검토, f60-svc-youtube-reassess-reject)."""
+    d = [
+        F.draft(
+            "대본 보고 한 발표였어",
+            claim_op="VALUE",
+            dimension="script_independence",
+            metric="script_mode",
+            polarity="POSITIVE",
+        )
+    ]
+    llm = F.FakeLlm(
+        [F.plan(assessments=d), F.plan(assessments=d), F.tools(REASSESS, prefix="ra")],
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(F.request(user_message=msg), llm)
+    fd = final_ok(data)
+    assert [a.type for a in fd.actions] == ["REASSESS"]
+    assert "이번 답에서 확인하지 못했어요" not in fd.message.text  # type: ignore[union-attr]
+
+
 def test_read_action_state_keeps_the_ordinary_ten_minutes() -> None:
     from .test_turn import fetch_take_script
 
@@ -272,14 +303,19 @@ def test_ask_after_unauthorized_request_becomes_goal_proposal_not_a_card() -> No
 
 
 @pytest.mark.parametrize(
-    ("metric", "note"),
+    ("metric", "note", "msg"),
     [
-        ("filler_per_min", templates.SystemText.GOAL_CONFLICT),  # 이미 강점인 차원(L6-08)
-        ("script_ratio", templates.SystemText.GOAL_UNMEASURABLE),  # 잴 수 없는 목표(L6-23)
+        ("filler_per_min", templates.SystemText.GOAL_CONFLICT, GOAL_MSG),  # 이미 강점인 차원(L6-08)
+        # 잴 수 없는 목표(L6-23): 사용자가 그 지표를 직접 말한 목표일 때(말하지 않았으면 도구 오류로 모델이 다시 고른다)
+        (
+            "script_ratio",
+            templates.SystemText.GOAL_UNMEASURABLE,
+            "3장 대본 응시 비율을 줄이는 걸 목표로 잡고 다음 연습 준비해 줘",
+        ),
     ],
 )
 def test_goal_proposal_for_conflict_or_unmeasurable_goal_says_why(
-    metric: str, note: templates.SystemText
+    metric: str, note: templates.SystemText, msg: str
 ) -> None:
     """기록과 어긋나거나 잴 수 없는 목표 요청은 목표 제안 카드와 함께 그 까닭의 고정 문장을 답에 싣는다(final60
     rep-demo-goal-proposal: 카드는 나왔는데 "말씀하신 목표와 기록으로 본 추천 목표가 달라요…"가 없었다)."""
@@ -289,7 +325,7 @@ def test_goal_proposal_for_conflict_or_unmeasurable_goal_says_why(
         answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
         fixes=[F.fix({})],
     )
-    _, _, data = F.run_turn(F.with_loaded(F.request(user_message=GOAL_MSG), "t-4"), llm)
+    _, _, data = F.run_turn(F.with_loaded(F.request(user_message=msg), "t-4"), llm)
     fd = final_ok(data)
     assert fd.status == "DONE" and fd.actions == []
     assert fd.message is not None
@@ -941,6 +977,12 @@ def test_measurement_dispute_gets_the_measurement_notice_without_reassess() -> N
     fd = final_ok(data)
     assert fd.actions == []
     assert templates.SystemText.MEASUREMENT_FIXED.value in fd.message.text  # type: ignore[union-attr]
+    # 답에 다음 Take 확인 방법이 없으면 코드가 다음 걸음을 붙인다(4-E, v1 회귀 f60-re-security-camera-dispute)
+    texts = [c.text for c in fd.message.claims]  # type: ignore[union-attr]
+    nxt = templates.SystemText.NEXT_MEASURE_CHECK.value
+    assert texts[-1] == nxt and texts.index(
+        templates.SystemText.MEASUREMENT_FIXED.value
+    ) < texts.index(nxt)
 
 
 def test_reassess_on_a_measurement_dispute_is_a_tool_error_and_gets_the_notice() -> None:
@@ -1122,3 +1164,31 @@ def test_saying_it_stays_low_even_looking_again_is_not_a_reassess_request() -> N
     llm = F.FakeLlm([F.plan(assessments=d), F.done()], answers=[F.answer([])], fixes=[F.fix({})])
     _, _, data = F.run_turn(F.request(user_message=msg), llm)
     assert templates.SystemText.MEASUREMENT_FIXED.value not in final_ok(data).message.text  # type: ignore[union-attr]
+
+
+def test_reassess_card_keeps_the_unchecked_notice_of_a_claim_clause() -> None:
+    """'Take 4는 소리 크기가 평가 기준보다 좋았어'는 넓은 낱말('평가')이 있어도 요청이 아니라 주장이다. 이 실행이 Take 5 다시 평가
+    카드를 냈어도 그 절의 '이번 답에서 확인하지 못했어요'는 남긴다(Issue #1194 코드 검수)."""
+    msg = "대본 보고 한 발표였어. Take 5 다시 평가해 줘. Take 4는 소리 크기가 평가 기준보다 좋았어."
+    d = [
+        F.draft(
+            "대본 보고 한 발표였어",
+            claim_op="VALUE",
+            dimension="script_independence",
+            metric="script_mode",
+            polarity="POSITIVE",
+        )
+    ]
+    llm = F.FakeLlm(
+        [F.plan(assessments=d), F.plan(assessments=d), F.tools(REASSESS, prefix="ra")],
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(F.request(user_message=msg), llm)
+    fd = final_ok(data)
+    assert [a.type for a in fd.actions] == ["REASSESS"]
+    text = fd.message.text  # type: ignore[union-attr]
+    assert (
+        "Take 4는 소리 크기가 평가 기준보다 좋았어" in text
+        and "이번 답에서 확인하지 못했어요" in text
+    )

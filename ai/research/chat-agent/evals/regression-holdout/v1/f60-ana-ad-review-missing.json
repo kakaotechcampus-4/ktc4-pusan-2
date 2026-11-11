@@ -1,0 +1,115 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-ana-ad-review-missing",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should_not",
+  "title": "리뷰가 아직 없는 Take 의 점수 · 리뷰를 물음 — 리뷰 분석 전 사실을 말하고 점수를 만들지 않음",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-ad",
+        "title": "광고 캠페인 기획 발표",
+        "takes": [
+          {
+            "take_id": "ad-t4",
+            "take_number": 4,
+            "started_at": "2026-11-03T19:00:00+09:00",
+            "completed_at": "2026-11-03T19:07:00+09:00",
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY"
+              },
+              "score": 74
+            }
+          },
+          {
+            "take_id": "ad-t5",
+            "take_number": 5,
+            "started_at": "2026-11-06T19:00:00+09:00",
+            "completed_at": "2026-11-06T19:07:00+09:00",
+            "review": null
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-ad"
+    }
+  },
+  "turns": [
+    {
+      "message": "방금 끝낸 연습은 몇 점 나왔고, 리뷰에서 뭘 고치라고 했어요?",
+      "page_take_id": "ad-t5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "plan-fact",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "리뷰 분석 전",
+        "grader": "regex",
+        "metric": "replan"
+      },
+      {
+        "check_id": "review-missing-fact",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "decision:REVIEW_MISSING:FACT_SHOWN:CODE"
+        ],
+        "metric": "replan"
+      },
+      {
+        "check_id": "says-no-review",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "리뷰[^.\\n]*(없|아직|분석 중|나오지 않|전이)",
+        "grader": "regex"
+      },
+      {
+        "check_id": "no-fabricated-score",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "(Take 5|이번|방금)[^.\\n]*\\d+점|\\d+점[^.\\n]*(Take 5|이번|방금)",
+        "grader": "regex",
+        "note": "리뷰가 없으니 이번 Take 점수는 없다(L4-02)"
+      },
+      {
+        "check_id": "read-before-answer",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          [
+            "tool:get_take_report:*",
+            "final:*"
+          ],
+          [
+            "tool:list_takes:*",
+            "final:*"
+          ]
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-partial-checked",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "SystemText.PARTIAL_CHECKED",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "note": "TARGET 6: 리뷰 없음이라는 확인한 사실로 해소 → DONE"
+      }
+    ]
+  }
+}

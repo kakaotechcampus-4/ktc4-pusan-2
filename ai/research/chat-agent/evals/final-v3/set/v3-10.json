@@ -1,0 +1,145 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-10",
+  "set": "eval",
+  "group": "global_scope",
+  "split": "dev",
+  "act": "should",
+  "title": "마지막으로 연습한 발표의 리뷰가 먼저 고치라고 한 것 — 피치 목록으로 고른 '회사 창립 기념식 사회'(11월 9일)의 마지막 리뷰 우선 개선 목소리",
+  "baseline_type": "scope",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-anniv",
+        "title": "회사 창립 기념식 사회",
+        "last_practiced_at": "2026-11-09T18:30:00+09:00",
+        "takes": [
+          {
+            "take_id": "an-t1",
+            "take_number": 1,
+            "started_at": "2026-11-05T18:00:00+09:00",
+            "completed_at": "2026-11-05T18:07:00+09:00",
+            "result": {},
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "an-t2",
+            "take_number": 2,
+            "started_at": "2026-11-09T18:30:00+09:00",
+            "completed_at": "2026-11-09T18:37:00+09:00",
+            "result": {
+              "voice_diff_db": -7.5,
+              "issues": [
+                [
+                  "VOLUME_LOW",
+                  3,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "vocal_delivery": "PRIORITY"
+              },
+              "score": 66
+            }
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-tech",
+        "title": "사내 기술 공유회 발표",
+        "last_practiced_at": "2026-11-08T14:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "tc-t1",
+            "take_number": 1,
+            "started_at": "2026-11-08T14:00:00+09:00",
+            "completed_at": "2026-11-08T14:07:00+09:00",
+            "result": {},
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 70
+            }
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-kinder",
+        "title": "어린이집 학부모 오리엔테이션",
+        "last_practiced_at": "2026-11-02T10:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "kd-t1",
+            "take_number": 1,
+            "started_at": "2026-11-02T10:00:00+09:00",
+            "completed_at": "2026-11-02T10:07:00+09:00",
+            "result": {},
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY"
+              },
+              "score": 71
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": null
+    }
+  },
+  "turns": [
+    {
+      "message": "마지막으로 연습한 발표에서 리뷰가 제일 먼저 고치라고 짚은 부분이 뭐였는지 알려 줘요."
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "pitch-list-first",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:list_pitches:*",
+          "final:DONE"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "names-latest",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "회사 창립 기념식 사회",
+        "grader": "regex"
+      },
+      {
+        "check_id": "priority-voice",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "목소리|소리 크기|음량",
+        "grader": "regex",
+        "note": "last_review(Take 2) priority_dimensions = [vocal_delivery]"
+      },
+      {
+        "check_id": "no-partial-text",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "SystemText.PARTIAL_CHECKED",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

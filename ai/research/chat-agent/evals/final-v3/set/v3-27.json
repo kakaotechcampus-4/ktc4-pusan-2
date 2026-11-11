@@ -1,0 +1,174 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-27",
+  "set": "eval",
+  "group": "reassess",
+  "split": "dev",
+  "act": "should",
+  "title": "Take 2 · 3 둘 다 원고를 화면에 켜 두고 읽었다며 두 Take 모두 다시 평가 요청 — 한 턴 1번 한도로 다시 평가는 하나만 제안 · 실행, 공식 그대로",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-farmer",
+        "title": "청년 농부 귀농 사례 발표",
+        "last_practiced_at": "2026-11-07T10:00:00+09:00",
+        "criteria": {
+          "standard_version": 1,
+          "display_criteria": ["청중에게 질문을 던지며 시작하기"],
+          "targets": [],
+          "script_used": false
+        },
+        "takes": [
+          {
+            "take_id": "yf-t1",
+            "take_number": 1,
+            "started_at": "2026-10-30T10:00:00+09:00",
+            "completed_at": "2026-10-30T10:06:00+09:00",
+            "result": {
+              "script_ratio": [0.2, 0.22, 0.25, 0.2],
+              "audience": [0.6, 0.57, 0.55, 0.6]
+            }
+          },
+          {
+            "take_id": "yf-t2",
+            "take_number": 2,
+            "script_mode": "HIGHLIGHT",
+            "started_at": "2026-11-03T10:00:00+09:00",
+            "completed_at": "2026-11-03T10:06:00+09:00",
+            "result": {
+              "script_ratio": [0.42, 0.5, 0.47, 0.44],
+              "audience": [0.4, 0.33, 0.36, 0.4],
+              "issues": [["GAZE_ON_SCRIPT", 2, true]]
+            }
+          },
+          {
+            "take_id": "yf-t3",
+            "take_number": 3,
+            "script_mode": "HIGHLIGHT",
+            "started_at": "2026-11-07T10:00:00+09:00",
+            "completed_at": "2026-11-07T10:06:00+09:00",
+            "result": {
+              "script_ratio": [0.38, 0.46, 0.52, 0.4],
+              "audience": [0.44, 0.38, 0.32, 0.43],
+              "issues": [["GAZE_ON_SCRIPT", 3, true]]
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-farmer"
+    },
+    "official_reviews": "rule"
+  },
+  "turns": [
+    {
+      "message": "Take 2, Take 3 연습 때는 노트북에 원고 전문을 크게 켜 두고 그대로 읽었거든요. 그러니 두 Take 다 원고 보고 한 발표라는 전제로 점수를 다시 매겨 주세요.",
+      "page_take_id": "yf-t3"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "reassess-flow",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": ["propose:REASSESS:ASK", "approve:REASSESS", "exec:REASSESS:OK"],
+        "metric": "path"
+      },
+      {
+        "check_id": "proposed-once",
+        "observe": "actions_proposed",
+        "compare": "equals",
+        "expect": 1,
+        "path": "counts.REASSESS",
+        "metric": "replan",
+        "note": "6-2 · 8-2: REASSESS 는 한 턴 1번 — 상한을 넘는 행동은 버린다"
+      },
+      {
+        "check_id": "executed-once",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 1,
+        "path": "counts.REASSESS"
+      },
+      {
+        "check_id": "review-calls",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 2,
+        "path": "review_calls",
+        "note": "다시 평가 한 번 = 리뷰 요청 A · B 두 번(6-6)"
+      },
+      {
+        "check_id": "named-take",
+        "observe": "actions_proposed",
+        "compare": "one_of",
+        "expect": ["yf-t2", "yf-t3"],
+        "path": "items[type=REASSESS].args.take_id",
+        "note": "사용자가 집은 두 Take 중 하나"
+      },
+      {
+        "check_id": "script-condition",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": {"type": "REASSESS", "args.change": {"script_used": true}},
+        "path": "items"
+      },
+      {
+        "check_id": "script-fact",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {"name": "SCRIPT_FACT", "fields": {"state": "전체로 켜져"}},
+        "grader": "template",
+        "note": "두 Take 모두 script_mode HIGHLIGHT"
+      },
+      {
+        "check_id": "script-not-allowed",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.SCRIPT_NOT_ALLOWED",
+        "grader": "template",
+        "note": "평가 기준 script_used false"
+      },
+      {
+        "check_id": "after-script-independence",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "NOT_EVALUABLE",
+        "path": "cards[type=REASSESS_RESULT].after.dimensions.script_independence"
+      },
+      {
+        "check_id": "changed-fields",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": ["score", "dimensions.script_independence"],
+        "path": "cards[type=REASSESS_RESULT].changed_fields",
+        "note": "리뷰 규칙 코드(LLM 없이)로 계산: Take 2 · 3 모두 A 88점 · 대본 의존 PRIORITY → B 100점 · NOT_EVALUABLE"
+      },
+      {
+        "check_id": "reassess-success",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.REASSESS",
+        "grader": "template"
+      },
+      {
+        "check_id": "reference-saved",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": 1,
+        "path": "after.conversation.reassess_results"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      }
+    ]
+  },
+  "notes": "끝 상태는 두 번째 요청을 버린 뒤의 처리가 계약에 정해져 있지 않아 검사하지 않는다."
+}

@@ -1,0 +1,134 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-02",
+  "set": "eval",
+  "group": "representative",
+  "split": "dev",
+  "act": "should",
+  "title": "2장 청중 시선을 Take 6보다 올리는 목표를 세우고 저장되면 연습하러 가겠다 — 확인 카드 → 승인 → 저장 → 결과 발견 안내 + 연습 준비 버튼",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-sci",
+        "title": "생명과학 저널 클럽",
+        "last_practiced_at": "2026-11-07T21:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "sci-t5",
+            "take_number": 5,
+            "started_at": "2026-11-04T21:00:00+09:00",
+            "completed_at": "2026-11-04T21:05:00+09:00",
+            "result": {"audience": [0.6, 0.36, 0.58, 0.62]},
+            "review": {"dimensions": {"audience_gaze": "PRIORITY"}, "score": 70}
+          },
+          {
+            "take_id": "sci-t6",
+            "take_number": 6,
+            "started_at": "2026-11-07T21:00:00+09:00",
+            "completed_at": "2026-11-07T21:05:00+09:00",
+            "result": {
+              "audience": [0.61, 0.29, 0.6, 0.63],
+              "issues": [["GAZE_LOW_EYE_CONTACT", 2, true]]
+            },
+            "review": {"dimensions": {"audience_gaze": "PRIORITY"}, "score": 68}
+          }
+        ]
+      }
+    ],
+    "conversation": {"scope_pitch_id": "p-sci"}
+  },
+  "turns": [
+    {
+      "message": "Take 6에서 2장 넘어갈 때 청중을 거의 안 보더라고요. 2장 청중 시선 비율을 Take 6보다 끌어올리는 걸 목표로 세워 두고, 저장되면 곧장 연습하러 갈래요.",
+      "page_take_id": "sci-t6"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "ask-save-button",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": ["propose:SAVE_GOAL:ASK", "approve:SAVE_GOAL", "exec:SAVE_GOAL:OK", "claim:ACTION_RESULT", "propose:START_PRACTICE:BUTTON"],
+        "metric": "path",
+        "note": "저장 확인 카드 → 승인 → 저장 → 결과 문장 → 같은 실행 끝 답에 연습 준비 버튼(6-2 ② 저장 → 연습 준비)"
+      },
+      {
+        "check_id": "goal-metric",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "audience_ratio",
+        "path": "after.conversation.goal.metric"
+      },
+      {
+        "check_id": "goal-slide",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": 2,
+        "path": "after.conversation.goal.slide_number"
+      },
+      {
+        "check_id": "goal-operator",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "gt_base",
+        "path": "after.conversation.goal.operator"
+      },
+      {
+        "check_id": "goal-base-take",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "sci-t6",
+        "path": "after.conversation.goal.base.take_id"
+      },
+      {
+        "check_id": "goal-base-value",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": 0.29,
+        "path": "after.conversation.goal.base.value",
+        "derive": "sci-t6:GAZE.audience_ratio@2"
+      },
+      {
+        "check_id": "practice-button",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": "START_PRACTICE",
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "no-auto-move",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "after.conversation.practice_moves",
+        "metric": "autonomy",
+        "note": "버튼만 내고 화면은 사용자가 누를 때만 옮긴다"
+      },
+      {
+        "check_id": "save-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.SAVE_GOAL",
+        "grader": "template"
+      },
+      {
+        "check_id": "result-discovery",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.RESULT_DISCOVERY",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "우선 개선은 audience_gaze 하나라 충돌 없음 → 확인 카드. 허용 근거 '세워'. '저장되면'의 조건은 저장 동사 뒤라 연습 요청에 걸린다(6-2 2번)."
+}

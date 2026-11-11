@@ -57,6 +57,7 @@ from .schemas import (
     StartPracticeCard,
     TakeSnapshot,
 )
+from .tools import arg_problems
 from .values import read_dimension_state, read_metric
 
 #: 행동마다 코드에 고정한 자율 등급(6-2). 모델이 바꾸지 못한다
@@ -141,7 +142,12 @@ class FetchTakeArgs(_A):
 
 
 class ReassessChange(_A):
-    script_used: bool | None = None
+    #: 대본을 쓴 조건이면 true: 사용자가 대본 · 원고 · 프롬프터(핵심어만 띄운 것 포함)를 보거나 띄워 놓고 했다고 말한 다시
+    #: 평가다(6-6 표 '대본 보고 한 발표 → script_used = true', Issue #1194 독립 평가에서 모델이 false 로 낸 일이 있었다)
+    script_used: bool | None = Field(
+        default=None,
+        description="대본 조건으로 다시 평가: 사용자가 대본 · 원고 · 프롬프터(핵심어만 띄운 것 포함)를 보거나 띄워 놓고 했다고 하면 true",
+    )
     targets: list[CriteriaTarget] | None = Field(default=None, max_length=20)
 
     @model_validator(mode="after")
@@ -158,7 +164,10 @@ class ReassessArgs(_A):
 
 
 class SaveGoalArgs(_A):
-    metric: str
+    #: 사용자가 말한 목표가 어떤 지표로도 잴 수 없으면(표정 · 자신감 등) null: 저장하지 않고 잴 수 있는 추천 안을 보인다(6-3 · L6-23)
+    metric: str | None = Field(
+        description="대화 목표 지표. 사용자가 말한 목표가 어떤 지표로도 잴 수 없으면(예: 표정 · 자신감) null"
+    )
     slide_number: int | None = Field(default=None, ge=1)
     base_take_id: str
     #: 이번 사용자 말에서 저장을 요청한 부분 그대로
@@ -182,7 +191,7 @@ ACTION_DESCRIPTIONS = {
     "fetch_pitch": "다른 피치의 자세한 자료를 가져와 대화 범위를 그 피치로 바꾼다(BE가 실행). pitch_id 또는 name 하나.",
     "fetch_take": "기본 자료에 없는 Take(같은 피치) 결과 전체를 가져온다(BE가 실행).",
     "reassess": "바꾼 조건(대본 사용 script_used 또는 내 기준 targets 하나)으로 리뷰를 다시 불러 참고 결과를 만든다. 공식 결과는 바뀌지 않는다. 측정값 이의(카메라가 낮았다 등)에는 쓰지 않는다.",
-    "save_goal": "대화 목표를 저장한다. 지표는 audience_ratio · filler_per_min · cpm · duration_ms 중 하나. 기준값은 코드가 base_take_id 의 기록으로 정한다. authorized_by 에는 이번 사용자 말에서 저장을 요청한 부분을 글자 그대로 넣는다.",
+    "save_goal": "대화 목표를 저장한다. 지표는 audience_ratio · filler_per_min · cpm · duration_ms 중 하나. 사용자가 말한 목표가 어떤 지표로도 잴 수 없으면(표정 · 자신감 등) metric 을 null 로 부른다(저장하지 않고 잴 수 있는 추천 안을 보인다). 기준값은 코드가 base_take_id 의 기록으로 정한다. authorized_by 에는 이번 사용자 말에서 저장을 요청한 부분을 글자 그대로 넣는다.",
 }
 
 
@@ -310,11 +319,14 @@ def authorize(
         return "CONDITION"
     # 동사 뒤에서 절을 끊는 말(~는데 · ~지만 · ~니까 …)이나 보조 용언(~고 있 · ~어 놓)이 오면 그 동사는 요청이 아니다
     # ("목표를 정해 놓았는데 … 알려줘", "목표로 잡고 있었는데 결과를 알려줘")
-    if any(w.endswith(_CLAUSE_BREAKS) for w in words) or any(
-        w.startswith(_AUX_STEMS) for w in words[1:2]
+    # 보조 용언에 '~고'가 붙어 다음 요청으로 이으면("목표로 세워 두고, 저장되면 곧장 연습하러 갈래요") 보조 용언이 있어도 '~고' 복합
+    # 요청이다(Issue #1194 독립 평가). '두었는데 · 놓았는데'처럼 절을 끊으면 그대로 막는다
+    aux_go = words[1:2] in (["두고"], ["놓고"])
+    if any(w.endswith(_CLAUSE_BREAKS) for w in words) or (
+        not aux_go and any(w.startswith(_AUX_STEMS) for w in words[1:2])
     ):
         return "NO_REQUEST_FORM"
-    if verb.endswith("고"):
+    if verb.endswith("고") or aux_go:
         # "목표로 잡고 연습하러 가자"처럼 '~고'로 이은 복합 요청은 문장 끝 동사의 요청형이 앞 동사에도 걸린다(6-2 · 13-2)
         forms = tuple({f for fs in cfg.request_forms.values() for f in fs})
     # 요청형은 명령 · 권유라 절 끝에 온다: 마지막 두 낱말 안에 있어야 한다
@@ -480,19 +492,24 @@ def propose(
 ) -> Proposal:
     """모델이 고른 행동 도구 하나를 행동 · 제안 카드 · 오류로 바꾼다."""
     model = ACTION_TOOL_ARGS.get(tool_name)
-    if model is None or raw_args is None:
+    if model is None:
         return Proposal(
             result="TOOL_ERROR",
             reason_code="BAD_ARGS",
             tool_message=_err("TOOL_INVALID", "BAD_ARGS"),
         )
     try:
-        a = model.model_validate(raw_args)
+        a = model.model_validate(raw_args) if raw_args is not None else None
     except ValidationError:
+        a = None
+    if a is None:
+        # 틀린 칸 · 문제 · 올바른 꼴을 함께 돌려준다(Issue #1194 4-D, 받은 값은 되돌리지 않음). 인자가 없으면 '인자는 JSON 객체'
+        message = _err("TOOL_INVALID", "BAD_ARGS")
+        message["error"]["fields"] = arg_problems(tool_name, raw_args, model)
         return Proposal(
             result="TOOL_ERROR",
             reason_code="BAD_ARGS",
-            tool_message=_err("TOOL_INVALID", "BAD_ARGS"),
+            tool_message=message,
         )
     atype = ACTION_TOOL_TYPE[tool_name]
     run_id = ctx.req.run.run_id
@@ -591,6 +608,17 @@ def propose(
                     "사용자가 이 조건(대본 사용 · 내 기준)을 말하지 않았다. 측정값 이의는 다시 평가하지 않는다",
                 ),
             )
+        if a.change.script_used is None and not ctx.cfg.reassess_targets:
+            # 기준을 바꾸는 다시 평가는 이번 판에서 내지 않는다(R5(a): FE 확인 카드가 기준을 개수로만 보여 승인 내용을 볼 수 없다).
+            # 답에는 할 수 없다는 고정 문장과 대본 사용 조건은 된다는 안내를 코드가 붙인다(turn.py `_targets_blocked_notes`)
+            return Proposal(
+                result="TOOL_ERROR",
+                reason_code="TARGETS_NOT_SUPPORTED",
+                tool_message=_err(
+                    "TARGETS_NOT_SUPPORTED",
+                    "기준(targets)을 바꾸는 다시 평가는 지금 하지 않는다. 할 수 없다는 안내는 코드가 쓴다. 기록으로 확인한 것만 답한다",
+                ),
+            )
         if a.change.script_used is not None:
             change: dict[str, Any] = {"script_used": a.change.script_used}
         else:
@@ -686,6 +714,24 @@ def _sourced_targets(
 
 #: 숫자 목표의 비교 방법 → 문구 (리뷰 판정과 같은 뜻: LT 미만 · LTE 이하 · GT 초과 · GTE 이상)
 _OPERATOR_WORD: dict[str, str] = {"LT": "미만", "LTE": "이하", "GT": "초과", "GTE": "이상"}
+#: 소리 크기 문턱값 문구. (비교 방법, 값의 부호) → 문구, {size}는 값의 크기(dB). 리뷰의 소리 크기 미션 설명
+#: (`review/next_missions.py` `VOLUME_MISSION_TEXT`, #1186)과 같은 말이다: 다시 평가의 기준은 리뷰가 그 Take 의 기준 음량으로
+#: 판정하므로 견준 때는 '기준'이고, 음수는 크기와 방향 말로 쓴다(숫자 검사 ⑤: -1 ↔ '1dB'). 리뷰 표가 바뀌면 함께 고친다
+#: (시험 `test_volume_text.py`가 두 표가 같은지 본다, Issue #1194 — #1183 후속)
+VOLUME_TARGET_TEXT: dict[tuple[str, int], str] = {
+    ("GTE", -1): "기준보다 {size} 넘게 작아지지 않기",
+    ("GTE", 0): "기준보다 작아지지 않기",
+    ("GTE", 1): "기준보다 {size} 이상 크게 말하기",
+    ("GT", -1): "기준보다 {size} 이상 작아지지 않기",
+    ("GT", 0): "기준보다 크게 말하기",
+    ("GT", 1): "기준보다 {size} 넘게 크게 말하기",
+    ("LTE", -1): "기준보다 {size} 이상 작게 말하기",
+    ("LTE", 0): "기준보다 크지 않게 말하기",
+    ("LTE", 1): "기준보다 {size} 넘게 커지지 않기",
+    ("LT", -1): "기준보다 {size} 넘게 작게 말하기",
+    ("LT", 0): "기준보다 작게 말하기",
+    ("LT", 1): "기준보다 {size} 이상 커지지 않기",
+}
 
 
 def _target_text(target: dict[str, Any], cfg: ChatAgentConfig) -> str:
@@ -697,11 +743,24 @@ def _target_text(target: dict[str, Any], cfg: ChatAgentConfig) -> str:
     """
     metric = str(target["metric"])
     if metric in clm.VOLUME_DIFF_METRICS:
-        # 소리 크기 문턱값은 '기준보다 1dB 작게 이상'처럼 비교 말이 겹치지 않게 부호로 쓴다(#1182, FE 표기와 같은 꼴)
-        value = f"기준 대비 {clm.signed_db(target['value'])}"
-    else:
-        value = clm.format_metric_value(metric, target["value"], cfg, exact=True)
+        # 소리 크기 문턱값은 리뷰 미션 설명과 같은 말로 쓴다('소리 크기: 기준보다 1dB 넘게 작아지지 않기', VOLUME_TARGET_TEXT)
+        v = target["value"]
+        sign = (v > 0) - (v < 0)
+        size = clm.signed_db(abs(v)).lstrip("+")  # 크기만(반올림 없이): 1.25 → '1.25dB'
+        text = VOLUME_TARGET_TEXT[(str(target["operator"]), sign)].format(size=size)
+        return f"{metric_label(metric)}: {text}"
+    value = clm.format_metric_value(metric, target["value"], cfg, exact=True)
     return f"{metric_label(metric)} {value} {_OPERATOR_WORD[str(target['operator'])]}"
+
+
+def _user_named_metric(message: str, metric: str, cfg: ChatAgentConfig) -> bool:
+    """사용자 말이 그 지표를 직접 말했는가(지표 이름 · 화면 이름). 목표 내용을 맡긴 말인지 가리는 데만 쓴다."""
+    names = {k for k, v in cfg.metric_names.items() if v == metric} | {
+        clm.METRIC_LABEL.get(metric, "")
+    }
+    # 띄어쓰기는 보지 않는다("대본응시비율" · "대본 응시 비율"은 같은 지표를 말한 것)
+    flat = "".join(message.split())
+    return any(n and "".join(n.split()) in flat for n in names)
 
 
 def _propose_goal(
@@ -715,9 +774,34 @@ def _propose_goal(
         return Proposal(
             result="TOOL_ERROR", reason_code=code, tool_message=_err(code, "기준 Take 결과가 없다")
         )
-    draft = build_goal_draft(
-        base, a.metric, a.slide_number, pitch_id=ctx.scope_pitch_id or "", cfg=cfg
+    # 지표가 null 이면 사용자가 말한 목표 자체가 어떤 지표로도 잴 수 없다(Issue #1194 독립 평가: 표정 목표에 모델이 save_goal 을
+    # 부를 길이 없었다). 사용자가 정한 목표라 다시 고르게 하지 않고 '잴 수 없음' 제안 카드로 간다
+    draft = (
+        "UNMEASURABLE_METRIC"
+        if a.metric is None
+        else build_goal_draft(
+            base, a.metric, a.slide_number, pitch_id=ctx.scope_pitch_id or "", cfg=cfg
+        )
     )
+    if (
+        draft == "UNMEASURABLE_METRIC"
+        and a.metric is not None
+        and not _user_named_metric(original_message or "", a.metric, cfg)
+    ):
+        # 사용자는 목표 내용을 맡겼는데("다음 목표를 잡아 줘") 모델이 대화 목표로 잴 수 없는 지표를 골랐다: '말씀하신 목표는 잴 수
+        # 없어요' 제안 카드로 낮추지 않고, 고를 수 있는 지표를 알려 모델이 다시 고르게 한다(실사용 흐름 점검 장면 2, Issue #1194).
+        # 사용자가 그 지표를 직접 말한 목표면 지금처럼 제안 카드(6-3 · L6-23)
+        allowed = list(cfg.goal_metrics)
+        tool_message = _err(
+            "GOAL_METRIC_NOT_ALLOWED",
+            f"대화 목표 지표는 {' · '.join(allowed)} 중 하나다. 사용자가 이 지표를 목표로 말하지 않았으니 "
+            "기준 Take 기록에서 잴 수 있는 지표로 다시 고른다",
+        )
+        tool_message["error"]["fields"] = ["metric"]
+        tool_message["error"]["allowed"] = allowed
+        return Proposal(
+            result="TOOL_ERROR", reason_code="GOAL_METRIC_NOT_ALLOWED", tool_message=tool_message
+        )
     review = base.results.review or {}
     dims = review.get("dimensions") or {}
     requested_dim = GOAL_METRIC_DIM.get(a.metric)
@@ -1348,14 +1432,18 @@ def start_practice_action(
     authorized_by: str | None,
     seq: int,
     budget: Budget,
+    pitch_id: str | None = None,
 ) -> tuple[Action | None, dict[str, Any], str | None]:
     """마지막 답의 연습 준비 이동(6-2): [연습 준비로] 버튼 카드만 낸다(자동 이동 없음). 근거는 부르는 쪽이 먼저 본다
     (모델 초안은 `practice_basis`, 가벼운 말 · Take 0개 다음 걸음은 코드가 정함).
 
+    대상은 범위 피치다. 범위가 '전체'면 부르는 쪽이 고른 피치(`pitch_id`: '가장 최근 발표' 질문에서 코드가 피치 목록으로 고른 것,
+    6-1 2번)를 쓰고, 그것도 없으면 버튼을 내지 않는다(`NO_SCOPE`).
+
     행동은 `autonomy:"BUTTON"`으로 `DONE`의 `actions`에 싣고 BE 는 실행하지 않는다(누르는 것이 승인이고 FE 가 옮긴다).
     행동 수 한도에 막히면 행동 없이 카드만 남긴다. 사용자가 이번 말에서 요청한 인용은 그대로 남긴다.
     """
-    pid = ctx.scope_pitch_id
+    pid = pitch_id or ctx.scope_pitch_id
     if pid is None:
         return None, {}, "NO_SCOPE"
     card = StartPracticeCard(pitch_id=pid).model_dump(mode="json")
@@ -1412,6 +1500,11 @@ def _target_view(t: CriteriaTarget | dict[str, Any]) -> dict[str, Any]:
     # 사용자가 쓴 문구(display)도 싣는다: 숫자 목표가 없는 기준(예: "자연스럽게 말하기")은 문구만이 실제 조건이다.
     # 문구가 표시 문자열 검사(6-9)에 걸리면 카드를 그리지 못한다(`_card_blocked`가 막아 행동을 내지 않는다)
     return {k: d.get(k) for k in ("display", "metric", "operator", "value")}
+
+
+def _targets_text(targets: list[dict[str, Any]]) -> str:
+    """기준 문구들을 안내 글 한 줄로: '청중 시선 30% 이상' · '말 속도 330자/분 이하'. 승인하는 내용이 다 보이게 모두 싣는다."""
+    return " · ".join(f"'{t.get('display')}'" for t in targets if t.get("display"))
 
 
 def _take_conditions(
@@ -1485,6 +1578,13 @@ def ask_confirm_card(
             before = {**take_view, "targets": now}
             after = {**take_view, "targets": new}
             text = templates.REASSESS_CHANGE_TEXT["targets"].format(count=len(new))
+            # 바뀌는 기준 문구를 안내 글로 보인다(화면이 기준 칸을 개수로만 보여도 무엇으로 다시 평가하는지 알 수 있게)
+            notes.append(templates.REASSESS_TARGETS_NEW.format(targets=_targets_text(new)))
+            notes.append(
+                templates.REASSESS_TARGETS_NOW.format(targets=_targets_text(now))
+                if now
+                else templates.REASSESS_TARGETS_NOW_NONE
+            )
         summary = templates.fill(
             templates.REASSESS_SUMMARY, take_number=str(summ.take_number), change=text
         )

@@ -1,0 +1,107 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-10",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should_not",
+  "title": "시선과 말 빠르기 중 뭘 먼저 잡을지 숫자로 — 시선은 측정 안 됨(값을 만들지 않음, 측정 안 됨 문장), 말 속도 356 은 기록으로 답함",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-vol",
+        "title": "봉사 동아리 모집 발표",
+        "last_practiced_at": "2026-11-08T17:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "vol-t1",
+            "take_number": 1,
+            "started_at": "2026-11-03T17:00:00+09:00",
+            "completed_at": "2026-11-03T17:04:00+09:00",
+            "result": {"cpm": [330, 336, 328, 334]},
+            "review": {"dimensions": {"pacing_rhythm": "STABLE"}, "score": 74}
+          },
+          {
+            "take_id": "vol-t2",
+            "take_number": 2,
+            "started_at": "2026-11-08T17:00:00+09:00",
+            "completed_at": "2026-11-08T17:04:00+09:00",
+            "result": {
+              "cpm": [352, 361, 355, 356],
+              "unmeasured": {"GAZE": "FACE_NOT_FOUND"},
+              "issues": [["PACE_FAST", 2, true]]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY",
+                "audience_gaze": "NOT_EVALUABLE",
+                "script_independence": "NOT_EVALUABLE"
+              },
+              "score": 70
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {"scope_pitch_id": "p-vol"}
+  },
+  "turns": [
+    {
+      "message": "모집 발표 Take 2에서 청중 보는 시선이랑 말 빠르기, 둘 중에 뭘 먼저 잡아야 할지 숫자로 비교해서 알려 줘.",
+      "page_take_id": "vol-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "read-before-record",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": ["tool:get_take_report:*", "claim:RECORD"],
+        "metric": "path"
+      },
+      {
+        "check_id": "unmeasured-on-plan",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "측정 안 됨",
+        "grader": "regex",
+        "metric": "replan",
+        "note": "물은 영역(시선)이 그 Take 에서 측정 안 됨이면 단계에 '측정 안 됨'(6-1 7번)"
+      },
+      {
+        "check_id": "unmeasured-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.UNMEASURED",
+        "grader": "template",
+        "note": "측정 안 됨은 '없음'이 아닌 확인한 사실(v2 TARGET 2)"
+      },
+      {
+        "check_id": "pace-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "356",
+        "grader": "number",
+        "derive": "vol-t2:SPEED.cpm"
+      },
+      {
+        "check_id": "no-generic-partial",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "SystemText.PARTIAL_CHECKED",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "note": "측정 안 됨도 해소(v2 TARGET 2) → DONE"
+      }
+    ]
+  },
+  "notes": "Take 2: GAZE 영역 측정 안 됨(take · 장 값 null), 말 속도 Take 값 (352+361+355+356)/4 = 356.0, 2장 PACE_FAST. 리뷰 우선 개선 pacing_rhythm."
+}

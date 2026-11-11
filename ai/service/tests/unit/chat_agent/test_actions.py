@@ -656,6 +656,10 @@ def test_reassess_confirm_card_shows_current_and_reference_condition() -> None:
     )
     tcard = ask_confirm_card(t.action.model_dump(mode="json"), ctx=ctx2, expires_at="x")
     assert tcard is not None and "내 평가 기준 1개" in tcard["summary"]
+    # 화면이 기준 칸을 개수로만 보여도 안내 글(받은 글 그대로 보임)로 무엇으로 다시 평가하는지 보인다(Issue #1194)
+    shown = tcard["after"]["targets"][0]["display"]
+    assert f"다시 평가에 쓸 기준: '{shown}'" in tcard["notes"]
+    assert any(n.startswith("지금 리뷰") for n in tcard["notes"])
     assert tcard["after"]["targets"] == targets
     # 숫자 목표가 없는 기준은 문구만이 실제 조건이다: 카드에 문구가 보여야 승인할 수 있다
     words = [{"display": "자연스럽게 말하기", "metric": None, "operator": None, "value": None}]
@@ -755,7 +759,10 @@ def test_l6_08_conflicting_goal_is_proposed_with_expert_option(metric: str, why:
 
 
 def test_l6_23_unmeasurable_goal_has_no_save_option() -> None:
-    p = do("save_goal", {**SAVE_ARGS, "metric": "script_ratio"})
+    """사용자가 직접 말한 목표가 대화 목표로 잴 수 없는 지표면 저장하지 않고 제안 카드로 낮춘다(L6-23)."""
+    msg = "대본 응시 비율을 줄이는 걸 목표로 잡아 줘"
+    args = {**SAVE_ARGS, "metric": "script_ratio", "authorized_by": "목표로 잡아 줘"}
+    p = do("save_goal", args, message=msg)
     assert (p.result, p.reason_code) == ("DOWNGRADED", "UNMEASURABLE")
     card = GoalProposalCard.model_validate(p.card)
     user = card.options[0]
@@ -1138,7 +1145,7 @@ def test_fetch_pitch_success_changes_scope() -> None:
         ctx=ctx,
     )
     assert applied.ok and applied.scope_changed
-    assert applied.success_text == "다른 발표로 범위를 바꿨어요."  # 받침 없는 제목은 '로'
+    assert applied.success_text == "'다른 발표' 기록을 가져왔어요."  # 받침 없는 제목은 '로'
     assert (
         ctx.scope_pitch_id == "p-2" and "t-4" not in ctx.snapshots
     )  # 이전 범위에서 가져온 Take 는 버린다
@@ -1701,3 +1708,106 @@ def test_reassess_target_text_keeps_the_exact_number_goal() -> None:
     got = p.action.args["change"]["targets"]  # type: ignore[union-attr]
     assert [t["display"] for t in got] == ["청중 시선 65.5% 초과", "발표 시간 300.5초 이하"]
     assert [t["value"] for t in got] == [0.655, 300500]
+
+
+@pytest.mark.parametrize(
+    "msg",
+    [
+        "최근 기록을 보고 다음 목표를 잡아 줘",
+        "3장에서 왜 자꾸 시선이 떨어져? 그걸 목표로 잡고 다음 연습 준비해 줘",
+    ],
+)
+def test_unmeasurable_metric_the_user_did_not_name_goes_back_to_the_model(msg: str) -> None:
+    """사용자가 목표 내용을 맡겼거나 다른 지표를 말했는데 모델이 대화 목표로 잴 수 없는 지표를 고르면, '말씀하신 목표는 잴 수
+    없어요' 제안 카드 대신 고를 수 있는 지표와 함께 도구 오류로 돌려준다(실사용 흐름 점검 장면 2, Issue #1194)."""
+    p = do(
+        "save_goal", {**SAVE_ARGS, "metric": "script_ratio", "authorized_by": "목표"}, message=msg
+    )
+    assert (p.result, p.reason_code, p.card, p.action) == (
+        "TOOL_ERROR",
+        "GOAL_METRIC_NOT_ALLOWED",
+        None,
+        None,
+    )
+    err = p.tool_message["error"]
+    assert (
+        err["fields"] == ["metric"]
+        and "audience_ratio" in err["allowed"]
+        and "script_ratio" not in err["allowed"]
+    )
+
+
+@pytest.mark.parametrize(
+    "msg", ["대본응시비율을 낮추는 걸 목표로 잡아 줘", "대본 응시 비율을 목표로 잡아 줘"]
+)
+def test_user_named_metric_ignores_spacing(msg: str) -> None:
+    """붙여 쓴 지표 이름("대본응시비율")도 사용자가 그 지표를 말한 것이다. 놓치면 사용자가 정한 목표 대신 모델이 다른 지표를
+    고르게 된다(`GOAL_METRIC_NOT_ALLOWED`, Issue #1194 코드 검수)."""
+    from pitch_coach_ai.features.chat_agent.actions import _user_named_metric
+
+    assert _user_named_metric(msg, "script_ratio", CFG)
+    assert not _user_named_metric("다음 목표를 잡아 줘", "script_ratio", CFG)
+
+
+@pytest.mark.parametrize(
+    ("message", "quote", "want"),
+    [
+        (
+            "2장 청중 시선 비율을 Take 6보다 끌어올리는 걸 목표로 세워 두고, 저장되면 곧장 연습하러 갈래요.",
+            "목표로 세워 두고",
+            None,
+        ),
+        ("군더더기를 줄이는 걸 목표로 잡아 두고 연습하러 갈래요", "목표로 잡아 두고", None),
+        ("3장 시선을 목표로 세우고 연습하러 가자", "목표로 세우고", None),
+        ("목표를 정해 놓았는데 결과 알려줘", "목표를 정해 놓았는데", "NO_REQUEST_FORM"),
+        ("목표로 잡아 두었는데 어떻게 됐어?", "목표로 잡아 두었는데", "NO_REQUEST_FORM"),
+        ("목표로 잡고 있었는데 결과를 알려줘", "목표로 잡고 있었는데", "NO_REQUEST_FORM"),
+    ],
+)
+def test_save_request_through_aux_verb_with_go(message: str, quote: str, want: str | None) -> None:
+    """보조 용언에 '~고'를 붙여 다음 요청으로 이은 말("세워 두고, …갈래요")은 '~고' 복합 요청이라 저장을 허용한다. 절을 끊는
+    보조 용언("놓았는데" · "두었는데" · "잡고 있었는데")은 그대로 막는다(Issue #1194 독립 평가)."""
+    from pitch_coach_ai.features.chat_agent.actions import authorize
+
+    assert authorize("SAVE_GOAL", quote, message, CFG) == want
+
+
+def test_unmeasurable_user_goal_with_null_metric_gets_a_proposal_card() -> None:
+    """표정처럼 어떤 지표로도 잴 수 없는 목표를 저장해 달라고 하면 모델이 save_goal 을 metric null 로 부르고, 저장하지 않고 '잴 수
+    없음' 제안 카드 · 고정 문장으로 답한다(6-3 · L6-23, Issue #1194 독립 평가 — 전에는 지표 없이 부를 길이 없었다)."""
+    from . import fakes as F
+
+    msg = "다음 리허설은 미소 띤 밝은 얼굴로 말하는 걸 목표로 저장해 주세요."
+    call = (
+        "save_goal",
+        {
+            "metric": None,
+            "base_take_id": "t-5",
+            "authorized_by": "목표로 저장해 주세요",
+            "reason": "밝은 표정",
+        },
+    )
+    llm = F.FakeLlm([F.plan(), F.tools(call), F.done()], answers=[F.answer([])], fixes=[F.fix({})])
+    _, _, data = F.run_turn(F.request(user_message=msg), llm)
+    text = data["message"]["text"]
+    cards = data["message"]["cards"]
+    assert (
+        data["actions"] == []
+    )  # 저장하지 않는다(끝 상태는 모델 답 문장에 달림 — 이 가짜 모델은 문장을 쓰지 않는다)
+    assert any(c["type"] == "GOAL_PROPOSAL" for c in cards)
+    assert templates.SystemText.GOAL_UNMEASURABLE.value in text
+
+
+def test_practice_button_prefers_the_pitch_the_code_picked_over_the_scope() -> None:
+    """'가장 최근 발표' 질문에서 코드가 고른 피치를 넘기면, 이어 부른 뒤 범위가 다른 피치로 바뀌었어도 그 피치로 버튼을 낸다(코드 검수 —
+    답은 최신 피치를 안내하는데 버튼은 바뀐 범위를 따랐다). 넘기지 않으면 범위 피치다."""
+    from pitch_coach_ai.features.chat_agent.actions import start_practice_action
+
+    ctx = make_ctx(base_request())
+    b = budget()
+    picked, _, _ = start_practice_action(
+        ctx=ctx, authorized_by="연습하러 갈래요", seq=1, budget=b, pitch_id="p-9"
+    )
+    scoped, _, _ = start_practice_action(ctx=ctx, authorized_by="연습하러 갈래요", seq=2, budget=b)
+    assert picked is not None and picked.args == {"pitch_id": "p-9"}
+    assert scoped is not None and scoped.args == {"pitch_id": ctx.scope_pitch_id}

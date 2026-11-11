@@ -21,7 +21,7 @@ import pytest
 
 from pitch_coach_ai.features.chat_agent import actions as act
 from pitch_coach_ai.features.chat_agent import claims as clm
-from pitch_coach_ai.features.chat_agent import compose
+from pitch_coach_ai.features.chat_agent import compose, templates
 from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG as CFG
 from pitch_coach_ai.features.chat_agent.config import load_config
 from pitch_coach_ai.features.chat_agent.llm_types import LlmTimeout
@@ -144,10 +144,11 @@ def _review_missing_turn(cfg: Any) -> tuple[list[dict[str, Any]], F.FakeLlm]:
 def test_fact_shown_only_when_the_fact_is_on_a_displayed_step() -> None:
     """`plan_progress`가 꺼져 단계에 사실을 붙이지 못하면 FACT_SHOWN 을 남기지 않는다. 신호는 그대로 열려 모델에게 가고,
     모델의 대응(ALT_TOOL)은 남는다. 켜져 있으면 전과 같이 FACT_SHOWN 이 먼저다."""
-    log, llm = _review_missing_turn(load_config(plan_progress=False))
+    # 모델이 신호에 대응하던 길(4-G 의 코드 대응을 끈 설정)에서 본다
+    log, llm = _review_missing_turn(load_config(plan_progress=False, code_signal_responses=False))
     assert decisions(log) == [("REVIEW_MISSING", "ALT_TOOL", "LLM", 2)]
     assert research_blocks(llm)[1]["signals"][0]["signal"] == "REVIEW_MISSING"
-    log_on, _ = _review_missing_turn(load_config())
+    log_on, _ = _review_missing_turn(load_config(code_signal_responses=False))
     assert decisions(log_on) == [
         ("REVIEW_MISSING", "FACT_SHOWN", "CODE", 1),
         ("REVIEW_MISSING", "ALT_TOOL", "LLM", 2),
@@ -282,7 +283,11 @@ def test_answer_failure_none_fallback_matches_the_asked_take(asked: int, drawn: 
     assert data is not None
     if drawn:
         assert data["status"] == "PARTIAL"
-        assert [c["text"] for c in data["message"]["claims"]] == [_TAKE4_NO_REVIEW]
+        texts = [c["text"] for c in data["message"]["claims"]]
+        # 그 Take 의 '없음' 근거가 먼저, 리뷰가 없어 코드가 읽은 코치 기록 값 · 리뷰 없음 안내가 뒤에(Issue #1194 4-E · 4-G)
+        assert texts[0] == _TAKE4_NO_REVIEW
+        assert "Take 4의 청중 시선은 53%예요." in texts
+        assert templates.SystemText.NO_REVIEW.value in texts
     else:
         assert lines[-1]["event"] == "error"
         assert not any(x.get("event") == "claim" for x in lines)

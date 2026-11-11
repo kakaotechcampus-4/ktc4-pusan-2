@@ -1,0 +1,151 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-09",
+  "set": "eval",
+  "group": "global_scope",
+  "split": "dev",
+  "act": "should_not",
+  "title": "마지막으로 연습한 발표 — 분석 중인 Take 의 시작이 가장 늦은 피치(11월 10일)를 고르고, 완료 시각이 늦은 다른 피치를 고르지 않음",
+  "baseline_type": "scope",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-res",
+        "title": "아파트 주민 설명회 안내",
+        "last_practiced_at": "2026-11-10T23:40:00+09:00",
+        "takes": [
+          {
+            "take_id": "rs-t1",
+            "take_number": 1,
+            "started_at": "2026-11-06T20:00:00+09:00",
+            "completed_at": "2026-11-06T20:07:00+09:00",
+            "result": {},
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "rs-t2",
+            "take_number": 2,
+            "started_at": "2026-11-08T20:00:00+09:00",
+            "completed_at": "2026-11-08T20:07:00+09:00",
+            "result": {},
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "rs-t3",
+            "take_number": 3,
+            "status": "ANALYZING",
+            "started_at": "2026-11-10T23:40:00+09:00",
+            "completed_at": null,
+            "result": null,
+            "review": null
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-camp",
+        "title": "캠퍼스 홍보대사 학교 소개",
+        "last_practiced_at": "2026-11-10T21:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "cp-t1",
+            "take_number": 1,
+            "started_at": "2026-11-09T18:00:00+09:00",
+            "completed_at": "2026-11-09T18:07:00+09:00",
+            "result": {},
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "cp-t2",
+            "take_number": 2,
+            "started_at": "2026-11-10T21:00:00+09:00",
+            "completed_at": "2026-11-10T21:50:00+09:00",
+            "result": {},
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-music",
+        "title": "음악회 프로그램 해설",
+        "last_practiced_at": "2026-11-05T15:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "ms-t1",
+            "take_number": 1,
+            "started_at": "2026-11-05T15:00:00+09:00",
+            "completed_at": "2026-11-05T15:07:00+09:00",
+            "result": {},
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": null
+    }
+  },
+  "turns": [
+    {
+      "message": "다음 주 일정 정리하다가 헷갈려서요, 제가 마지막으로 연습한 발표가 어떤 거였는지만 알려 주세요."
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "names-latest",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "아파트 주민 설명회 안내",
+        "grader": "regex",
+        "note": "last_practiced_at 가장 늦음(분석 중 Take 3 시작 11-10 23:40 KST)"
+      },
+      {
+        "check_id": "not-other-as-latest",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "가장 최근에 연습을 시작한 발표는 '캠퍼스",
+        "grader": "regex",
+        "note": "완료 시각이 늦은 p-camp 는 시작이 더 이르다"
+      },
+      {
+        "check_id": "no-partial-text",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "SystemText.PARTIAL_CHECKED",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-action",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "propose:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "7-10: 모델 기록 문장이 그 피치의 날짜 근거를 이미 이었으면 고정 첫 문장을 내지 않으므로 고정 문장 대신 제목 · 날짜를 본다. take_count 는 2(분석 중 제외)."
+}

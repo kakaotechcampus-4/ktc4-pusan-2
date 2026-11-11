@@ -10,7 +10,7 @@
 | 담당 | JWK0395 |
 | 설계 | 목적 · 계약 · 처리 · 실패 처리 · 시험 → [`docs/ai/features/chat-agent.md`](../../../docs/ai/features/chat-agent.md) |
 | 단계 | 서비스에 탑재했다(기능 문서 4-1). 코어는 서비스 [`features/chat_agent/`](../../service/src/pitch_coach_ai/features/chat_agent/), 엔드포인트는 `POST /agent/turn`(`AGENT_ENABLED`를 켜기 전에는 503). 이 폴더에는 가짜 BE · 평가 · 실제 모델 시험이 남고 서비스 패키지를 가져다 쓴다 |
-| 버전 | `chat_agent-0.12.1`(서비스 `features/chat_agent/version.py`. 아래 평가 결과 표는 회차마다 적은 판에서 잰 값이고, 6회차가 `0.7.0` · 7회차가 `0.9.0`), 응답 스키마 `1.0`, 도구 스키마 `tools-5`, 자료 묶음 `guides-8`, 실행 상태 `v` 1 |
+| 버전 | `chat_agent-0.13.0`(서비스 `features/chat_agent/version.py`. 아래 평가 결과 표는 회차마다 적은 판에서 잰 값이고, 6회차가 `0.7.0` · 7회차가 `0.9.0`), 응답 스키마 `1.0`, 도구 스키마 `tools-6`, 자료 묶음 `guides-10`, 실행 상태 `v` 1 |
 
 ## 1. 코드 구조
 
@@ -36,11 +36,13 @@ chat-agent/
 ├─ tests/lab/ · tests/live/ 연구 도구 시험 · 실패 행 대응표 · 기준표 목차 시험 · 실제 모델 평가(live)
 │                           (코어 단위 · 계약 시험은 서비스 ai/service/tests/unit/chat_agent/)
 ├─ evals/scenarios/         평가셋 · 안전 세트 · 객관성 세트 · 에이전트 서비스 세트
-├─ evals/path/              경로 세트 24(개발 · 회귀: 도구 선택 · 계획 변경 · '없음' 근거, --dir 로 돈다)
-├─ evals/final/             독립 최종 평가 60(동결 문항 · 규칙 · 검수 · 결과 · 사후 분석, 9회차)
+├─ evals/path/              경로 세트 28(개발 · 회귀: 도구 선택 · 계획 변경 · '없음' 근거 · 여러 차례, --dir 로 돈다)
+├─ evals/final/             독립 최종 평가 v1 60(9회차, 결과를 본 뒤 고쳐 회귀 세트로 강등)
+├─ evals/final-v2/          독립 평가 v2 60(Issue #1194: 고치기 전 동결 · 봉인 기준선 · 끝나고 한 번)
+├─ evals/reader-review/     사람이 읽듯 대화를 보는 검토 기준 · 결과(보정 전 보조 검토)
 ├─ e2e/                     로컬 풀스택 E2E(실제 FE · BE · PostgreSQL + 가짜 모델 AI 서비스, Playwright)
 ├─ reports/results/         커밋하는 평가 결과
-└─ reports/run-logs/        실행 로그 발췌(화면 단계 · 도구 기록 · 문장 · 결정 로그, runlog.py)
+└─ reports/run-logs/        실행 로그 발췌(화면 단계 · 도구 기록 · 문장 · 결정 로그, runlog.py · runlog_from_run.py)
 ```
 
 ### 2-1. 코어 (서비스 `ai/service/src/pitch_coach_ai/features/chat_agent/`)
@@ -75,6 +77,7 @@ chat-agent/
 | `answer.py` | 답 문장 만들기 · 검사 · 문장 줄(5-4 · 6-1 5번 · 6-9, 판단 설명은 설명이 이은 이번 턴 근거로도 검사): 앞 문장을 먼저 내고, 초안이 흘러오는 동안 최종 답 순서로 확정된 문장을 한 문장씩 검사해 통과한 것부터 `claim` 줄로 낸다. 걸린 문장과 그 뒤는 보류했다가 초안이 끝나면 한 번 고쳐 원래 순서로 낸다(낸 문장은 고치거나 지우지 않음). 일반 조언(`GENERAL`)은 초안 끝에 이어 온 앞의 3문장(실행 전체에서 셈)만 쓰고 그 앞에 고정 안내를 붙인다(안내는 첫 일반 조언과 함께 나가고 실행에 한 번, 일반 조언이 모두 빠지면 뺀다) | 답 초안 조각 · 다 받은 초안 → 문장 줄 · 통과한 문장 | 턴(답 쓰기 · 승인 대기 전 답) | 검사 규칙은 `checks.py`, 판단 확정은 `claims.py` |
 | `memory.py` | 기억(6-14): 처음 요청의 기억 번호 담기 · 실행 중 바뀜 표시, 코칭 프로필은 답 쓰기 · 고치기 호출의 데이터 칸에만, 저장 후보 검사(①~⑥: 이번 말의 인용 · 기억 요청 표현 · 철회 · 조건 · 남의 말 인용 · key · 숫자 · 지시형 낱말 · 요청 구간), 대화 요약 항목 거르기(숫자는 Take · 장 번호만, 판정 · 동의 낱말 · 금지 주장 · 개인정보 · 지시문 없음). 판단 · 비교 · 목표 함수는 기억을 받지 않는다(P14) | 요청 `memory` · 답 초안 후보 · 요약 응답 → 데이터 칸 · 통과한 후보 · 항목 | 루프 · 턴 | 낱말 목록 · 수는 `config.py`(`memory_*`) |
 | `turn.py` | `/agent/turn` 한 번(5-3 · 5-4): 스트림 전 검사 → 실행 → 진행 줄 · 문장 줄 · 끝 줄, 끝에 붙는 고정 문장(공식 결과를 바꿔 달라는 요청 `CANNOT_DO` · 이름이 같은 피치 되묻기 · 이름으로 찾은 피치 없음 `PITCH_NOT_FOUND` · 사용법 자료 없음 `USAGE_NO_GUIDE`), 가벼운 말은 계획 뒤 코드 고정 `SYSTEM` 문장으로 끝내기(코드 확인: 60자 · 숫자 · 대상 · 연습 낱말), 기록 질문을 기록으로 답하는 보강(`record_answer_guard`) · 대화 목표 결과 문장(`goal_status_sentence`), 표시 자료는 인용한 문장, 행동이면 서명(`ASK` 행동은 앞서 답 문장을 쓰고 검사해 확인 카드와 함께 멈춤, 이어 부른 뒤 최종 답은 그 문장을 앞부분에 그대로 싣고 행동 결과 문장을 잇는다), 낸 문장은 어떤 끝에서도 최종 답의 앞부분이고 끝 줄 앞에 남은 문장을 문장 줄로 마저 낸다, 모델 없이 끝나는 길에서도 앞 문장 · 승인한 행동의 결과 문장 · 카드를 싣고, 상태가 한도를 넘어도 낸 문장과 그 자료 카드를 남긴다, 측정값 이의로 다시 평가를 바랐는데 하지 않은 답에 측정값 안내(6-6), 최종 출력 검사 | 요청 바이트 · 의존성 → 스트림 전 오류 또는 NDJSON 줄(+ 다른 스레드에서 부를 수 있는 취소 신호 `cancel`) | 서비스 `api/chat_agent.py`(연구는 대역 `chat_agent_lab/app.py`) | 크기 한도는 `config.py` |
+| `guidance.py` | '안 된다' 답의 대안 · 다음 걸음과 반복 막기(7-10, Issue #1194 4-C · 4-E): 핵심 고정 문장 뒤에 이번 요청의 기본 자료로 고른 대안(지금 볼 수 있는 발표 · Take) · 다음 걸음(`SYSTEM`)을 붙이고, 직전 어시스턴트 메시지에 같은 핵심 문장이 있으면 대안 대신 예시 질문을, "이어서 확인해 줘"로 같은 `PARTIAL` 안내가 되풀이되면 `DONE`과 같은 이유 안내로 바꾼다. 모델 문장은 쓰지 않는다 | 핵심 문장 · 기본 자료 · 대화 기록 → 덧붙일 `SYSTEM` 문장 · 끝 상태 | 턴(`turn.py` 끝 처리) | 새 고정 문장은 `templates.py`에 더하고 7-10 표 · 시험(`test_guidance.py`)을 함께 |
 | `examples/` | 요청 · 스트림 · 오류 · 행동 결과 예시 JSON(5-10) | — | 계약 시험 · BE 계약 시험 | `python -m chat_agent_lab.examples` 로 다시 만든다(만드는 코드는 서비스 `tests/unit/chat_agent/example_builder.py`) |
 
 ### 2-2. 연구 전용 `src/chat_agent_lab/`
@@ -89,6 +92,8 @@ chat-agent/
 | `perf.py` | 실행 폴더의 단계별 시간(계획 · 조사 · 답 쓰기 · 검사 · 고치기) · 일반/다시 평가 턴 시간 · 첫 문장 시간 · 턴당 호출 · 토큰 · 도구 캐시 적중률 · 한도로 끝난 턴 비율(14-1 '비용 · 시간') | `runs.jsonl`(호출별 진단 시간표 `diag`) → 표 | 사람이 실행(`python -m chat_agent_lab.perf <실행 폴더>`) | 시험 `tests/lab/test_perf.py` |
 | `holdout.py` · `similarity.py` | 독립 최종 평가 세트 도구(13-5 · 13-8): 형식 검사 · 동결(문항 · 규칙 · 스키마 · 채점 코드 해시) · 대조(`--rules`), 기존 문항과의 유사도(글자 3-그램 자카드, 기준 0.45). **문항 글을 출력하지 않는다**(파일 · 검사 id · 위치 · 해시 · 점수만) | 문항 폴더 → 코드 · 해시 · 점수 | 사람이 실행 | 시험 `tests/lab/test_holdout.py` · `test_trajectory.py` |
 | `runlog.py` | 실행 로그 발췌: 시나리오를 평가 실행기와 같은 가짜 BE 길로 한 번 돌려 호출마다 plan 단계 · 도구 기록 · 문장 · 끝 상태와 그 호출의 결정 로그 · 호출 사이 BE 행동을 md · jsonl 로(서명 상태는 가림) | 시나리오 → `reports/run-logs/` | 사람이 실행(요금이 듦) | 시험 `tests/lab/test_runlog.py` |
+| `runlog_from_run.py` | 실행 로그 발췌를 회귀 재측정 결과에서 뽑는다(모델을 다시 부르지 않음): 문항의 첫 실행마다 차례별 화면 할 일 단계 · 확인한 것 · 답 · 카드와 결정 로그 · 사건 순서를 md 로 | `transcripts`로 돈 결과 폴더 → `reports/run-logs/<id>.md` | 사람이 실행 | 대화 기록(`transcripts.py`)의 칸이 바뀌면 같이 |
+| `transcripts.py` | 평가 실행의 대화 기록: 평가 실행기를 그대로 돌리며(채점 · 실행 코드는 고치지 않고 `evals.grade`를 감쌈) 실행마다 사용자 화면에 보이는 것(사용자 말 · 할 일 단계 · 확인한 것 · 답 문장 · 카드)을 차례마다 `transcripts.jsonl`로 남긴다. 사람이 읽듯 보는 검토(`evals/reader-review/`)의 재료 | `evals` 인자 그대로 → 결과 폴더 `transcripts.jsonl` | 사람이 실행(요금이 듦) | 화면에 보이는 칸이 바뀌면(FE 12-4) `screen_turn`을 고친다. 독립 평가 v2 공식 실행에는 쓰지 않는다 |
 | `app.py` | 서비스 계층 대역: `ai/.env` 읽기, 자료 묶음 읽기(`--corpus` 모드, 기본 검수를 마친 카드만), 동시 실행 자리(429 `AGENT_BUSY`), `handle_turn` 부르기, 서비스 도구 호출 LLM(`ToolLlmClient` · `tool_role`) 만들기, 한 턴 해 보기 명령 | 요청 dict → 줄 목록 | live 시험 · 평가 · 손으로 해 보기 | 서비스의 같은 자리는 `api/chat_agent.py`(HTTP · 스트림 · 실행 풀) |
 | `fake_be.py` | 가짜 BE 실행기(12-3 흉내): 저장소(피치 · Take · 공식 리뷰 · 대화 · 목표 · 메시지 · 판단), 기본 자료 · 대화 기록 모으기, 스트림 · final 검사, 실행 이벤트(진행 줄 · 문장 줄을 `event_seq`로 저장, `events_after`로 `after_seq` 커서 조회, 문장 줄 번호 · 끝 줄 앞부분 대조, 끊김 · `error` 끝 줄 · 불일치면 받은 문장으로 `PARTIAL`), 행동 실행(소유권 · 한 번만 · 다시 평가는 실제 리뷰 코드로 A · B), 승인 흐름(`ASK` 행동은 `args` · `args_hash` 저장 뒤 `WAITING_APPROVAL`에서 멈추고 `approve` · `reject` · `cancel` · 30분 만료 · 대기 중 새 메시지로 이어짐, 거절 · 만료 · 취소는 AI를 부르지 않고 고정 문장을 덧붙여 저장, 선승인 `SAVE_GOAL`은 내용 해시를 다시 계산해 맞을 때만 실행, 연습 이동 버튼은 실행하지 않고 `click_practice`로만 기록), `ACTION_RESULT` 이어 부르기(누적량 + 행동 시간 · `loaded_takes` · `removed_sources` · 범위 확정과 `state_revision`), 답 저장, 기억(설정 켜기 · 끄기 · '기억 없이' 대화 · 항목 · 전체 지우기와 기억 번호, 요청 `memory` · 밀린 메시지 `overflow`, 프로필 저장은 다시 검사 · 번호 조건 · `MEMORY_SAVED` 카드, 요약은 판 번호가 같을 때만 갱신), 자동 목표 확인 | `AgentApp` · 메시지 → `Run`(호출 · 행동 · final 기록) | 통합 시험 · 평가 | 계약(5절) · BE 할 일(12-3)이 바뀌면 같이 고친다. 실제 BE가 아니다(DB · 동시성 · 재시작 복구 없음, 머리 설명의 '단순화') |
 
@@ -458,7 +463,7 @@ uv sync                                             # .venv 를 만들고 서비
 | **경로 세트 24**(개발) · 과제 성공률 | — | 0.18 (11/60, 20개 때) | 0.63 (45/72) |
 | 경로 정확도 · 재계획 적합률(경로 세트) | — | 0.55 · 0.25 (20개 때) | 0.78 · 0.92 (고정 순서 기준선 0.41 · 0.69) |
 
-**독립 최종 평가 60**(`evals/final/README.md`, 규칙은 문항을 쓰기 전에 정함): 공식 한 번(`34850b28`) 과제 성공률 **0.650 (117/180)** · pass^3 0.617 · 경로 정확도 0.878 · 재계획 적합률 0.877 — 합격선(0.90 · 0.80 · 0.95 · 0.95) **미달**. 같은 문항의 봉인 기준선: 고치기 전 에이전트 0.528 · 재계획 0.298, 고정 순서 0.394. 공식 실행 뒤 실패를 보고 고쳤으므로(`evals/final/POSTHOC.md`: 이 작업이 만든 버그 1 · 원래 약점 16 · 문항 기대값 문제 6) 이 세트는 회귀 세트로 강등됐다. 고친 뒤 0.800 은 강등된 세트의 값이다.
+**독립 최종 평가 60**(`evals/final/README.md`, 규칙은 문항을 쓰기 전에 정함): 공식 한 번(`34850b28`) 과제 성공률 **0.650 (117/180)** · pass^3 0.617 · 경로 정확도 0.878 · 재계획 적합률 0.877 — 자체 기준(0.90 · 0.80 · 0.95 · 0.95) **미달**. 같은 문항의 봉인 기준선: 고치기 전 에이전트 0.528 · 재계획 0.298, 고정 순서 0.394. 공식 실행 뒤 실패를 보고 고쳤으므로(`evals/final/POSTHOC.md`: 이 작업이 만든 버그 1 · 원래 약점 16 · 문항 기대값 문제 6) 이 세트는 회귀 세트로 강등됐다. 고친 뒤 0.800 은 강등된 세트의 값이다.
 
 - **재계획 적합률의 뜻**: 상황 신호가 난 문항에서 미리 정한 대응 검사(사실 표시 · 다른 도구 · 대상 · 계획 고치기 · 행동 · 안전 종료)의 통과율이다. 코드의 사실 표시 · 안전 종료와 모델의 대안 선택이 섞여 있고, 결정 로그는 선택이 있었음을 남길 뿐 그 선택이 옳았음을 보증하지 않는다.
 - **흔들림**: 같은 계열 코드를 세 번 재면 평가셋 50 이 126 ~ 130(3c 스팟에서는 135) 사이에서 움직였다. 3번 중 1 ~ 2번 실패하는 시나리오와 모델 호출 시간 초과(최종 측정 3번째에 3건)가 남은 실패의 대부분이다.
@@ -466,6 +471,106 @@ uv sync                                             # .venv 를 만들고 서비
 - **남은 한계**: 사용법 카드 검수 전(화면 이해도 · 사용법 4개 시나리오), 부분 인용 문장은 조언이 통째로 빠짐(guide-nervous), 끝 상태는 질문별 해소를 모두 확인하지 않음(15-2), 대상을 집지 않은 질문에서 답 쓰기가 실패하면 대체 답이 확인한 근거 전체로 그려짐, 경로 채점의 결정 · 행동 사건 자리는 기록 순서로 추정(호출 안 결정은 도구 순번으로, 행동은 제안한 호출 뒤로)하고 `turn: all`은 마지막 계획까지 이어 붙임, 근거성 사람 보정 · 배포(dev) 반복 완주 · 사용자 시험 결과는 이 판에 없음.
 - **측정 뒤 고침**(`94f92783`, 위 표는 그 전 코드 `e5dee8cf`의 값): 연습 준비 버튼을 이번 사용자 말의 이동 요청 · 이번 실행의 목표 저장 성공일 때만 내게 6-2 를 좁혔다(13-2 와의 긴장, 15-2). 같은 조건으로 버튼과 닿는 시나리오만 3번씩 다시 쟀다: 평가 · 안전 · 서비스 세트 15개(`safe-mt-history` · `aut-suggest-practice` · `aut-go-practice` · `safe-compound-clear` · `svc-talk-practice` · 주입 · 가벼운 말 주입 4개 · 대표 6개) **45/45 · pass^3 15/15**, 경로 세트 2개 3/6 — `path-combo-goal-flow` 0/3 은 고치기 전 최종 측정 세 번도 같은 검사(목표 충돌 제안으로 저장 안 됨)로 0/3 이었고 버튼 검사는 통과했다. PR 리뷰(#1163)를 받아 이동 요청을 '이동 낱말 하나'에서 '인용이 든 절의 이동 낱말 바로 곁에 이동 요청 꼴'로 더 좁히고(`c67a05b7`, 질문 속 낱말을 인용한 버튼을 막음) 같은 17개를 다시 쟀다: 15개 **45/45 · pass^3 15/15**, 경로 세트 2개 3/6(`path-combo-goal-flow` 0/3 은 같은 까닭이고 버튼 검사 3/3 통과 — 목표가 저장되지 않았으니 모델이 인용한 "연습하러 갈 수 있게 해 줘"가 새 규칙을 통과한 것이다). 다시 평가 기준 문구(#1167, `59c66325` · `b6998127` — 출처 없는 문구를 null 대신 숫자 목표로 만든 문구로, 값은 반올림하지 않음)는 다시 평가 시나리오 9개를 3번씩 다시 쟀다: **26/27 · pass^3 8/9**(`ra-criteria` 2/3 — 모델이 다시 평가를 부르지 않은 한 번, 같은 시각 고치기 전 코드 `ccae0adf` · 최종 측정도 2/3). 전체 세트는 다시 재지 않았다.
 - 실행 로그 발췌(`reports/run-logs/`, 최종 코드), 설계 · 증거 지도(`reports/design-evidence-map.md`).
+
+### 10회차 (Issue #1194 최종 정리 — 실패 원인별 고침 · 한 턴 전체 검사 · 독립 평가 v2)
+
+9회차와 같은 조건(`--corpus approved` · 하이브리드 검색 · `gpt-6-luna` 추론 low · 시나리오마다 3번)이다. 먼저 고치기 전 코드(`fb479f6f`, `0.12.1`)로 회귀 세트 전체를 다시 재서 실패를 원인별로 나눴고([`reports/failure-analysis-1194.md`](reports/failure-analysis-1194.md)), 원인마다 고친 마지막 코드(`6f0f4cec`, `0.13.0` · `tools-6` · `guides-10`)로 같은 세트를 다시 쟀다. 바뀐 것: 가장 최근 발표 근거 · 요청 해소 검사 · '안 된다' 답의 다음 걸음 · 신호 코드 처리 · 도구 오류 안내 · 한 턴 전체 검사(`output_guard.py`) · 화면에서 본 헷갈리는 대화 · 사람이 읽듯 보는 검토로 찾은 것(기능 문서 6-1 · 6-3 · 6-6 · 6-9 · 7-9 · 7-10). 대화 기록을 함께 남기려고 `chat_agent_lab.transcripts`로 돌렸다(채점은 `evals`와 같음).
+
+| 지표 · 단위 | 목표(14-2) | 고치기 전 `fb479f6f` | 최종 회귀 `6f0f4cec` |
+|---|---|---|---|
+| 회귀 세트 113 × 3 · 과제 성공률 · pass^3 | — | 0.920 (312/339) · 0.867 (98/113) | 0.941 (319/339) · 0.867 (98/113) |
+| 과제 성공률 · 평가셋 50 | ≥ 0.90 | 0.86 | 0.93 |
+| pass^3 · 평가셋 50 · 대표 · 안전 23 | ≥ 0.80 · 1.00 · 1.00 | 0.80 · 0.83 · 0.96 | 0.86 · 0.83 · 0.87(안전 세트 실패 3문항은 모두 끝 상태 `PARTIAL`, 금지된 일 0) |
+| 화면 이해도 | ≥ 0.95 | 0.08(사용법 카드 검수 전) | 0.92(`guides-10`) |
+| 숫자 정확도 | 1.00 | 0.97 | 0.94 — 미달(9회차와 같은 채점기 한계 포함) |
+| 근거성(LLM 판정 표본 50, 사람 맞춤 전) | ≥ 0.90 | 1.00 | 0.87 — 걸린 7문장은 모두 모델이 자료 문장을 바꿔 쓴 조언(목적 · 대상을 덧붙임). 표본이 달라 흔들림이 크다 |
+| 금지된 일 · 승인 없는 실행 · 나간 문장 변경 · GENERAL 금지 위반 · 기억 오염 | 0 | 0 | 0 |
+| **경로 세트**(개발) · 과제 성공률 · pass^3 | — | 0.625 (45/72, 24문항) | 0.833 (70/84, 28문항) · 0.714 |
+| **v1 60**(회귀로 강등) · 과제 성공률 · pass^3 | — | 0.778 (140/180) · 0.700 | 0.789 (142/180) · 0.750 |
+| 일반 턴 중간값 · 상위 5%(초, 회귀 세트) | ≤ 15 · ≤ 30 | 10.36 · 21.13 | 10.95 · 19.75 |
+| 첫 문장까지 중간값 · 상위 5%(초, 회귀 세트) | — | 9.60 · 17.83 | 9.32 · 15.94 |
+| 다시 평가 턴 상위 5%(초) | ≤ 45 | 26.89 | 32.46 |
+| 모델 시간 초과 | — | 0 | 0 |
+
+- **한 턴 전체 검사**(`6f0f4cec` 603실행의 마지막 차례): 같은 근거 · 값의 반복으로 뺀 문장 78(69실행), 기준 없는 '확인 불가'를 바꾼 것 0, 기록만 한 것 0.
+- **결정 비율**(같은 실행, 사실 표시 제외): 코드 228 · 모델 148 — [`reports/design-evidence-map.md`](reports/design-evidence-map.md) 2절.
+- **사람이 읽듯 보는 검토**(보정 전 보조 검토, 73대화): 고친 7 · 남은 6 — [`evals/reader-review/RESULTS.md`](evals/reader-review/RESULTS.md).
+- **독립 평가 v2**(`85fcc115`, 최종 한 번): 과제 성공률 0.550 → 0.617(+0.067, 95% 짝 부트스트랩 [−0.011, +0.150] — 개선이 통계적으로 확인되지 않음), pass^3 0.450 → 0.483, 경로 0.833 → 0.857, 재계획 0.833 → 0.889, 고정 순서 0.489. 자체 기준 미달. [`evals/final-v2/results/REPORT.md`](evals/final-v2/results/REPORT.md).
+- **'안 된다' 답 짝 검수**(v2 실행기가 답 본문을 남기지 않아 회귀 세트 '안 된다' 문항 5개 × 3번으로 대신, 고치기 전 `fb479f6f` ↔ 최종 `6f0f4cec` 대화 기록, A/B 가림 · 시드 20261110, 구현과 맥락을 나눈 별도 검수 모델): 짝 15개 중 최종이 나음 7 · 고치기 전이 나음 4 · 같음 4, 문항 다수결 최종 3 · 고치기 전 1 · 같음 1, 없는 Take · 피치 · 기능을 말한 답 0.
+- **모델 비교**(같은 최종 코드 — luna · terra · Haiku 는 `975bf5c4`, Argon 은 공급자 호환을 더한 `9bc35772` — · 같은 채점기 · 근거성 판정은 모두 luna · 서비스 조건 · 문항마다 3번, 2026-11-11). 비용은 엘리스 AI 클라우드 요금(2026-11-11 확인)으로 셌다(Haiku 캐시 단가는 표기가 없어 입력 단가로). '시간 초과 실행'은 호출 시간 초과가 한 번이라도 있었던 실행 수다. 다시 재려면 `ai/.env`에 그 모델의 묶음(`OPENAI_<계열>_BASE_URL` · `_API_KEY` · `_MODEL`)을 두고 `.venv/bin/python -m chat_agent_lab.evals --bundle OPENAI_<계열> --set all --judge --followups --workers 4 --search hybrid`(경로 · v1 · v2 는 `--followups` 없이 `--dir evals/path` · `evals/final/set` · `evals/final-v2/set`, 경로는 `--judge` 도 없이).
+
+  | 모델 | 세트 | 과제 성공률 | pass^3 | 경로 · 재계획 | 숫자 정확도 | 근거성 | 금지된 일 | 일반 턴 중간값 · 상위 5%(초) | 시간 초과 실행 | 턴당 호출 | 턴당 비용(원) |
+  |---|---|---|---|---|---|---|---|---|---|---|---|
+  | `gpt-6-luna`(서비스) | 회귀 113 | 0.959 (325/339) | 0.894 | — · — | 0.940 | 0.954 | 0 | 10.0 · 18.3 | 0 | 3.8 | 1.2 |
+  | `gpt-6-luna`(서비스) | 경로 28 | 0.869 (73/84) | 0.786 | 0.955 · 1.000 | 0.852 | — | 0 | 11.5 · 20.7 | 3 | 4.7 | 1.5 |
+  | `gpt-6-luna`(서비스) | v1 60 | 0.744 (134/180) | 0.683 | 0.850 · 0.895 | 0.915 | 0.960 | 0 | 13.2 · 28.9 | 19 | 4.8 | 1.6 |
+  | `gpt-6-luna`(서비스) | v2 60 | 0.583 (105/180) | 0.433 | 0.857 · 0.833 | 0.948 | 0.960 | 0 | 14.3 · 33.0 | 3 | 4.1 | 1.4 |
+  | `gpt-6.1-terra` | 회귀 113 | 0.950 (322/339) | 0.920 | — · — | 0.962 | 0.973 | 0 | 10.6 · 17.2 | 0 | 3.3 | 7.8 |
+  | `gpt-6.1-terra` | 경로 28 | 0.750 (63/84) | 0.679 | 0.955 · 0.967 | 0.783 | — | 0 | 13.1 · 25.0 | 3 | 4.3 | 12.1 |
+  | `gpt-6.1-terra` | v1 60 | 0.844 (152/180) | 0.817 | 0.900 · 1.000 | 0.914 | 1.000 | 0 | 13.3 · 26.8 | 1 | 4.2 | 12.4 |
+  | `gpt-6.1-terra` | v2 60 | 0.628 (113/180) | 0.600 | 0.875 · 0.926 | 0.892 | 1.000 | 0 | 12.7 · 22.5 | 5 | 3.7 | 10.3 |
+  | `claude-haiku-5-5` | 회귀 113 | 0.720 (244/339) | 0.549 | — · — | 0.966 | 0.889 | 0 | 8.2 · 13.5 | 0 | 4.0 | 5.9 |
+  | `claude-haiku-5-5` | 경로 28 | 0.881 (74/84) | 0.786 | 0.894 · 0.983 | 0.834 | — | 0 | 9.8 · 14.6 | 3 | 4.7 | 7.1 |
+  | `claude-haiku-5-5` | v1 60 | 0.594 (107/180) | 0.500 | 0.750 · 0.842 | 0.858 | 0.883 | 0 | 9.2 · 14.9 | 3 | 4.2 | 6.3 |
+  | `claude-haiku-5-5` | v2 60 | 0.500 (90/180) | 0.417 | 0.833 · 0.815 | 0.910 | 0.918 | 0 | 9.2 · 15.7 | 6 | 4.1 | 6.3 |
+  | `gemini-4-argon` | 회귀 113 | 0.546 (185/339) | 0.372 | — · — | 0.964 | 0.885 | 0 | 27.4 · 38.0 | 164 | 3.4 | 37.0 |
+  | `gemini-4-argon` 시간 3배 · 1번(참고) | 회귀 113 | 0.735 (83/113) | — | — · — | 0.936 | 0.913 | 0 | 40.8 · 75.3 | 37 | 3.6 | 43.6 |
+
+  | 세트 | 문항 | luna · terra · Haiku 모두 3번 다 실패 | 그중 세 모델이 같은 검사로 실패 | 잰 세 모델로 본 상한(어느 모델이든 한 번은 통과) |
+  |---|---|---|---|---|
+  | 회귀 113 | 113 | 0 | 0 | 1.000 |
+  | 경로 28 | 28 | 0 | 0 | 1.000 |
+  | v1 60 | 60 | 8 | 8 | 0.867 |
+  | v2 60 | 60 | 14 | 14 | 0.767 |
+
+  - 네 세트 783실행 전체: luna 0.814 · terra 0.830 · Haiku 0.658, 턴당 비용 1.4 · 9.9 · 6.2원.
+  - 모두 실패하는 문항을 실패한 검사로 보면 v2 14개 중 10개 · v1 8개 중 5개가 코드가 내는 고정 문장 · 버튼 규칙 · 흐름을 보는 검사다(예: `v2-24` '아직 연습을 시작한 발표가 없어요' 안 나옴, `f60-nc-*` 비교 전에 코드가 기록을 먼저 가져옴). 코드가 틀렸는지 문항의 기대가 틀렸는지는 문항마다 확인해야 한다. 일부 고정 문장은 모델이 근거를 잇는 방식에 따라 나오거나 빠지므로 어느 모델에나 성립하는 한계는 아니지만, 자체 기준에 닿으려면 모델을 바꾸기보다 이 문항들을 코드 · 문항 기대 양쪽에서 확인해 고치는 쪽이 먼저다.
+  - luna v1 의 실패 46 중 10은 호출 시간 초과가 낀 실행이다(세 모델을 함께 돌린 때). 그래서 v1 의 terra 우세(+0.100)에는 게이트웨이 대기가 섞여 있다.
+  - `gpt-6.1-sol`은 도구를 붙인 호출부터 400 으로 거절된다: Chat Completions 에서는 추론과 함수 도구를 함께 쓸 수 없어 도구 단계는 추론을 끄고(`none`) 보내는데, sol 은 `none`을 받지 않는다(Responses API 로는 된다). 재지 못했다. luna · terra 도 같은 까닭으로 도구 단계는 추론 없이 돈다.
+  - 이 비교의 luna v2 0.583 은 독립 평가 공식 값 0.617(`85fcc115`)과 180실행 중 6번 차이다(그 사이 실사용 흐름 점검 실패 고침 · 실행마다의 흔들림).
+- **Argon 원인 분석**(회귀 113, 서비스 조건 × 3 · 시간 3배 × 1): 회귀 세트에서 결론이 나와 나머지 세트는 멈췄다(Argon 측정 약 2.1만 원, 사용량을 받은 호출만).
+
+  | | luna | Argon | Argon 시간 3배 |
+  |---|---|---|---|
+  | 과제 성공률 | 0.959 (325/339) | 0.546 (185/339) | 0.735 (83/113) |
+  | 실패 중 호출 시간 초과가 있는 실행 | 0 / 14 | 135 / 154 | 27 / 30 |
+  | 실패 중 시간 초과 없이 한도로 끊김 | 1 | 15 | 0 |
+  | 실패 중 끊기지 않고 검사 실패(판단) | 13 (338 중 3.8%) | 4 (189 중 2.1%) | 3 (86 중 3.5%) |
+  | 성공한 호출 중간값 · 상위 5%(초): 조사 | 1.8 · 4.5 | 6.3 · 10.0 | 7.7 · 25.0 |
+  | 성공한 호출 중간값 · 상위 5%(초): 답 쓰기 | 3.9 · 6.7 | 8.5 · 11.7 | 9.0 · 18.2 |
+  | 호출 중간값 출력 토큰: 조사 · 답 쓰기 | 66 · 344 | 76 · 440 | 56 · 443 |
+  | 호출별 입력 캐시 비율의 평균: 조사 · 답 쓰기 | 0.91 · 0.66 | 0.26 · 0.10 | 0.29 · 0.15 |
+  | 호출 시간 초과(조사 · 답 쓰기 호출 중) | 0 | 218 (1,273번의 약 17%) | 48 (442번의 약 11%) |
+
+  - 끊기지 않은 실행의 검사 실패율은 luna 보다 높지 않았다(조건부 비교라 판단 능력이 같다는 증거는 아니다). 끊긴 까닭은 응답 시간이다: 호출이 2.2~3.5배 느려(조사는 출력이 비슷한데도 3.5배, 출력량 · 게이트웨이 대기의 몫은 나누지 못함), 한 실행 45초 중 답 몫 24초를 남긴 조사 21초에 조사 호출 세 번(중간값 19초)이면 닿는다.
+  - 시간이 넘은 호출은 사용량을 받지 못하고, 사용량이 없으면 출력 예약(호출당 2,000)을 그대로 둔다(`settle_output`). 출력 한도로 끝난 26턴 중 23턴에 같은 턴의 호출 시간 초과가 함께 있었다. 끝났는지 확인하지 못한 호출(127)은 중복 과금을 막으려고 다시 보내지 않는다.
+  - 시간 3배 실행은 시간 설정 다섯 개(`call_seconds` · `turn_seconds` · `reserved_answer_seconds` · `answer_call_seconds` · `fix_min_seconds`)와 `LLM_TIMEOUT_SECONDS`를 3배로 바꾼 사본에서 돌렸다(저장소 설정은 그대로). 서비스 조건 실행과 함께 돌려 게이트웨이 동시 요청이 8개였으므로 대기 시간이 섞였을 수 있다.
+- **실사용 흐름 점검**(로컬 풀스택: 진짜 FE · BE · PostgreSQL + 실제 모델 AI 서비스, 가상 기록, [`e2e/README.md`](e2e/README.md) '실사용 흐름 점검'): 장면 1~4 × 3번 중 10번 성공. 실패 둘 — 장면 1 한 번(두 발표의 마지막 연습 날짜가 같은 시드에서 모델이 날짜만 말해 결과를 볼 수 있는 발표 안내가 빠짐: 코드는 모델이 날짜 근거를 이으면 그 문장을 생략한다), 장면 2 한 번(사용자가 목표를 말하지 않았는데 "말씀하신 목표는 기록으로 잴 수 없어" + 목표 제안 카드, 확인 카드 없음). 화면에서 본 두 차례 대화(장면 5) 2번은 모두 끝났고, 둘째 차례에서 같은 값을 새 근거(문제 구간)와 함께 다시 말한 실행이 1번 있었다. 모델 호출 132(입력 0.61M · 출력 25k). 실패 둘의 원인을 고친 뒤(`5332ce90`: 결과 있는 발표 안내는 날짜 · 분석이 끝난 Take 수 근거를 둘 다 이었을 때만 생략, 사용자가 말하지 않은 잴 수 없는 목표 지표는 도구 오류로 모델이 다시 고름) 장면 1 · 2를 다시 3번씩 돌려 6/6(모델 호출 51). 최종 코드(`9bc35772`)에서 다시 모두 돌리면 장면 1~4 10/12 · 목소리 두 차례 대화 2번 모두 `DONE`이다 — 실패 둘은 장면 1(시드의 두 발표가 같은 날 시작돼 모델이 "날짜만으로는 어느 쪽이 더 최근인지 구분할 수 없어요"라고 답함) · 장면 2(목표를 말로만 제안하고 저장 카드를 내지 않음). 고친 뒤의 실행을 모으면 장면 1 · 2 각 5/6, 장면 3 · 4 3/3. 실행마다의 기록은 [`reports/demo/`](reports/demo/README.md).
+- **사용량**(실제 모델 호출, 공급자 실측): 고치기 전 회귀 2,533호출(입력 10.5M · 출력 0.49M 토큰), 최종 회귀 2,785호출(입력 12.3M · 출력 0.51M), 심판 · 판정 따로.
+- **남은 한계**: 한도로 끝난 턴 2.4%(다른 피치 기록 가져오기가 겹치는 질문), '대본 전달도는 평가할 수 없어요'를 요청 해소로 세지 않는 경우(`safe-inj-script-move`), 모델이 자료 검색 뒤 일반 조언 대신 거절을 고르는 경우(`f60-refuse-outfit-general` 3번 중 2번), 비교할 수 없다는 답 뒤 값 나열 · 고정 문장의 내부 말(읽듯 보는 검토 '남은 것').
+
+### 11회차 (Issue #1194 — 독립 평가에서 나온 문제를 상황 종류 단위로 고침 · 새 독립 세트 v3)
+
+10회차의 모델 비교에서 잰 모델 셋(luna · terra · Haiku)이 모두 매번 같은 검사로 실패한 22문항(v1 8 · v2 14)을 원인별로 나눴다: 코드가 설계를 빠뜨림 13 · 문항 기대가 설계 · 실행기 관례와 다름 7 · 한계 2. 코드는 문항이 아니라 상황 종류 단위로 고쳤고(`chat_agent-0.14.0` · `tools-7`, 테크스펙 7절 '독립 평가에서 나온 문제를 고침'), 문항 기대는 동결본을 두고 회귀 복사본([`evals/regression-holdout/`](evals/regression-holdout/README.md))에서만 고쳤다. 고친 코드가 처음 보는 문항에도 통하는지 보려고, **고치기 전에** 새 독립 세트 v3 40문항을 쓰고 동결했다([`evals/final-v3/`](evals/final-v3/README.md)).
+
+- 순서: v3 동결 `500dc07f` → 봉인 기준선(고치기 전 코드 `00b1ec80`, luna · terra · 고정 순서) 해시 `a72cdfd4` → 고침 `748b12bb` · 회귀 복사본 · 문항 점검 `29e6b5e4` → 최종 회귀 → v3 최종 한 번.
+- 고친 코드는 다른 모델의 읽기 전용 코드 리뷰를 두 번 받아 지적 10건을 반례 시험과 함께 고쳤다.
+- 미리 막는 장치: 고정 문장 ↔ 시험 대조(`ai/service/tests/unit/chat_agent/test_template_trace.py`), 문항 점검(`tests/lab/test_scenario_lint.py`).
+
+| 세트(문항마다 3번) | luna 고치기 전 → 고친 뒤 | terra 고치기 전 → 고친 뒤 |
+|---|---|---|
+| 회귀 113 · pass^3 | 0.959 → 0.950 · 0.894 → 0.885 | 0.950 → 0.953 · 0.920 → 0.920 |
+| 그중 평가셋 50 | 0.927(고친 뒤) | 0.927(고친 뒤) |
+| 경로 28 | 0.869 → 0.881 | 0.750 → 0.845 |
+| v1 60(회귀 복사본) · pass^3 | 0.744 → 0.906 · 0.683 → 0.850 | 0.844 → 0.939 · 0.817 → 0.900 |
+| v2 60(회귀 복사본) · pass^3 | 0.583 → 0.844 · 0.433 → 0.750 | 0.628 → 0.817 · 0.600 → 0.767 |
+| **v3 40(처음 보는 세트, 봉인 기준선 → 최종 한 번)** | **0.742 → 0.792** [−0.042, +0.158] | **0.717 → 0.783** [−0.017, +0.167] |
+
+- 고치기 전 값은 10회차 모델 비교(`975bf5c4`)와 v3 봉인 기준선이다. v3 의 구간은 문항 단위 짝 부트스트랩 95%. v3 경로 정확도 · 재계획 적합률: luna 0.906 → 0.940 · 1.000, terra 0.889 → 0.914 · 0.952 → 1.000. 금지된 일 · 승인 없는 실행 0. 고정 순서 기준선 0.575. 상세 [`evals/final-v3/results/REPORT.md`](evals/final-v3/results/REPORT.md).
+- 회귀 113 의 luna −0.009 는 흔들림 범위다(떨어진 두 문항을 고치기 전 · 고친 코드로 6번씩 다시 돌려 같은 수준, 실패 실행의 피치 가져오기는 모델의 선택). v1 · v2 의 상승에는 회귀 복사본에서 고친 문항 기대 7문항과 고치기 전 측정의 동시 실행 시간 초과(luna v1 19실행)가 섞여 있다.
+- terra 의 최종 측정은 terra 회귀 측정과 동시에 돌렸다(공급자 대기로 시간 초과가 섞일 수 있음, v3 terra 에서 시간 초과가 낀 실행 1). luna v3 최종은 홀로 돌렸다.
+- 남은 것: v3 에서 두 모델이 모두 한 번도 통과하지 못한 5문항(`v3-01` · `v3-08` · `v3-19` · `v3-30` · `v3-32`) — 원인 분류 뒤 다음 판에서 고치고 v3 를 회귀로 내린다. 설계 문장인데 코드가 내지 않는 고정 문장 12개(기능 문서 15-4).
+- 사용량: luna 최종 회귀 · v3, terra 최종 회귀 · v3 와 봉인 기준선을 합쳐 모델 호출 9,672번(실행 결과 파일은 저장소에 올리지 않았고, v3 는 결과 해시를 [`evals/final-v3/results/`](evals/final-v3/results/REPORT.md)에 남겼다).
 
 ## 기준표 대응 시험 목차
 
@@ -479,16 +584,16 @@ uv sync                                             # .venv 를 만들고 서비
 
 | 기준 | 보이는 것 | 시험 |
 |---|---|---|
-| ⑤ 단계 분기 · 계획 | 계획 → 도구 → 행동으로 멈춤 → 이어 부르기, 할 일 단계 = 실제 실행(실행하지 않은 단계는 건너뜀), 모델의 실행 중 계획 고치기와 넷째 고치기 한도, 범위 밖 경로 | `ai/service/tests/unit/chat_agent/test_turn.py::test_action_stops_with_signed_state_then_resume_finishes` · `ai/service/tests/unit/chat_agent/test_plan_progress_turn.py::test_steps_follow_actual_runs_and_unrun_steps_are_skipped` · `ai/service/tests/unit/chat_agent/test_signal_routes.py::test_model_plan_edits_mid_run_show_at_once_and_the_fourth_is_a_limit_error` · `ai/service/tests/unit/chat_agent/test_turn.py::test_out_of_scope_plan_refuses_with_fixed_sentence_per_reason` |
+| ⑤ 단계 분기 · 계획 | 계획 → 도구 → 행동으로 멈춤 → 이어 부르기, 할 일 단계 = 실제 실행(실행하지 않은 단계는 건너뜀), 모델의 실행 중 계획 고치기와 넷째 고치기 한도, 범위 밖 경로, '가장 최근 발표'는 피치 목록을 먼저 읽고 날짜 근거로 답함(Issue #1194) | `ai/service/tests/unit/chat_agent/test_turn.py::test_action_stops_with_signed_state_then_resume_finishes` · `ai/service/tests/unit/chat_agent/test_plan_progress_turn.py::test_steps_follow_actual_runs_and_unrun_steps_are_skipped` · `ai/service/tests/unit/chat_agent/test_signal_routes.py::test_model_plan_edits_mid_run_show_at_once_and_the_fourth_is_a_limit_error` · `ai/service/tests/unit/chat_agent/test_turn.py::test_out_of_scope_plan_refuses_with_fixed_sentence_per_reason` · `ai/service/tests/unit/chat_agent/test_latest_pitch.py::test_latest_pitch_without_finished_take_is_answered_from_the_list` |
 | ⑤ 단계 분기 — 비교 불가 `NOT_COMPARABLE` | 사실 표시 뒤 모델이 다른 Take 비교(ALT_TOOL) · 계획 고치기(PLAN_EDIT) · 대응 없음(NONE) | `ai/service/tests/unit/chat_agent/test_plan_progress_turn.py::test_not_comparable_shows_fact_then_alt_tool_appends_step_after_run` · `ai/service/tests/unit/chat_agent/test_plan_progress_turn.py::test_plan_edit_after_signal_is_logged_with_update_plan_seq` · `ai/service/tests/unit/chat_agent/test_plan_progress_turn.py::test_unanswered_signal_is_closed_with_none` |
 | ⑤ 단계 분기 — 기본 자료에 없음 `NOT_LOADED` | 가져오기 행동(모델 · 코드) → 이어 부르기에서 단계가 이어짐, 범위가 없으면 신호 없이 사실만 | `ai/service/tests/unit/chat_agent/test_plan_progress_turn.py::test_needs_action_keeps_plan_meta_across_resume` · `ai/service/tests/unit/chat_agent/test_plan_progress_turn.py::test_code_prefetch_fetch_take_is_logged_as_code_action` · `ai/service/tests/unit/chat_agent/test_progress.py::test_not_loaded_without_scope_pitch_shows_fact_but_opens_no_signal` |
-| ⑤ 단계 분기 — 리뷰 없음 `REVIEW_MISSING` | `리뷰 분석 전` 표시 → 코치 결과 읽기(ALT_TOOL) → DONE, 리뷰 없음 문장 | `ai/service/tests/unit/chat_agent/test_signal_routes.py::test_review_missing_is_shown_then_the_model_reads_the_coach_result_instead` · `ai/service/tests/unit/chat_agent/test_none_evidence.py::test_review_missing_fallback_says_review_not_take` |
-| ⑤ 단계 분기 — 기록 없음 `NO_RECORD` | `Take 없음` → '없음' 근거로 답(NONE) → DONE · 연습 준비 버튼 | `ai/service/tests/unit/chat_agent/test_signal_routes.py::test_no_record_offers_the_none_answer_and_the_model_answers_without_more_reads` · `ai/service/tests/unit/chat_agent/test_none_evidence.py::test_user_test_model_links_the_take_count_none_evidence_and_ends_done` |
+| ⑤ 단계 분기 — 리뷰 없음 `REVIEW_MISSING` | `리뷰 분석 전` 표시 → 코드가 코치 기록 읽기(ALT_TOOL · CODE, 단계 글 `리뷰 없어 코치 기록`) → DONE, 리뷰 내용을 물었으면 리뷰 없음 문장(Issue #1194 4-G). 스위치를 끈 이전 동작(모델이 고름)은 `test_signal_routes.py` | `ai/service/tests/unit/chat_agent/test_signal_code.py::test_review_missing_reads_the_coach_record_by_code` · `ai/service/tests/unit/chat_agent/test_signal_routes.py::test_review_missing_is_shown_then_the_model_reads_the_coach_result_instead` · `ai/service/tests/unit/chat_agent/test_none_evidence.py::test_review_missing_fallback_says_review_not_take` |
+| ⑤ 단계 분기 — 기록 없음 `NO_RECORD` | `Take 없음` → 사실 표시 뒤 모델이 '없음' 근거로 답(NONE:LLM, 코드로 닫았다가 회귀 재측정에서 안내가 빠져 되돌림, Issue #1194) → DONE · 연습 준비 버튼 | `ai/service/tests/unit/chat_agent/test_signal_code.py::test_no_record_is_left_to_the_model` · `ai/service/tests/unit/chat_agent/test_signal_routes.py::test_no_record_offers_the_none_answer_and_the_model_answers_without_more_reads` · `ai/service/tests/unit/chat_agent/test_none_evidence.py::test_user_test_model_links_the_take_count_none_evidence_and_ends_done` |
 | ⑤ 단계 분기 — 도구 실패 `TOOL_ERROR` | `확인 실패` → 다른 도구로 확인(ALT_TOOL) → DONE, 복구하지 않음(NONE) · 풀리지 않으면 PARTIAL | `ai/service/tests/unit/chat_agent/test_failure_rows.py::test_fm_L1_19_tool_exception_becomes_that_tools_error_and_the_run_goes_on` · `ai/service/tests/unit/chat_agent/test_signal_routes.py::test_tool_error_without_recovery_closes_with_none_and_the_answer_decides_the_end` · `ai/service/tests/unit/chat_agent/test_none_evidence.py::test_recovered_tool_failure_is_done_but_unrecovered_is_partial` |
 | ⑤ 단계 분기 — 시간 · 호출 부족 `BUDGET_LOW` | 시간 · 도구 한도로 조사를 멈춤(STOP_PARTIAL) · 하던 단계 `시간 부족` TODO · PARTIAL | `ai/service/tests/unit/chat_agent/test_plan_progress_turn.py::test_partial_on_research_time_leaves_todo_and_time_short` · `ai/service/tests/unit/chat_agent/test_signal_routes.py::test_tool_call_limit_stops_research_with_budget_low_and_time_short_step` |
 | ⑤ 단계 분기 — 사용자 이의 `USER_DISPUTE` | 조건 있는 이의 → 다시 평가 행동(ACTION) · 확인 카드, 조건 없는 이의는 행동 없음 | `ai/service/tests/unit/chat_agent/test_signal_routes.py::test_user_dispute_with_a_condition_becomes_a_reassess_action_logged_as_llm_action` · `ai/service/tests/unit/chat_agent/test_signal_routes.py::test_reassess_without_a_condition_is_not_a_dispute_action` |
-| ⑤ 도구 연동 | 도구 8개 닫힌 스키마, 틀린 인자는 실행하지 않음, 캐시, 판단 초안이 집은 기록을 코드가 먼저 읽기 | `ai/service/tests/unit/chat_agent/test_tools.py::test_definitions_are_eight_p0_tools_with_closed_schemas` · `ai/service/tests/unit/chat_agent/test_tools.py::test_l1_15_wrong_args_are_bad_args_not_exceptions` · `ai/service/tests/unit/chat_agent/test_tools.py::test_l1_20_cache_hit_is_cached_without_new_evidence` · `ai/service/tests/unit/chat_agent/test_prefetch.py::test_missing_target_take_is_fetched_before_any_research_call` |
-| ⑤ 상태 관리 | 서명 상태로 이어 부르기(누적량 · 단계 메타 유지), 변조 · 판 불일치 409 | `tests/lab/test_fake_be.py::test_fm_L1_31_budget_and_turn_count_accumulate_across_resumes` · `ai/service/tests/unit/chat_agent/test_plan_progress_turn.py::test_needs_action_keeps_plan_meta_across_resume` · `ai/service/tests/unit/chat_agent/test_turn.py::test_resume_with_tampered_state_or_ids_409` · `ai/service/tests/unit/chat_agent/test_turn_contract.py::test_fm_L1_33_resume_after_a_version_change_is_409_before_any_model_call` |
+| ⑤ 도구 연동 | 도구 8개 닫힌 스키마, 틀린 인자는 실행하지 않음, 캐시, 판단 초안이 집은 기록을 코드가 먼저 읽기, 틀린 인자 · 없는 대상에는 틀린 칸 · 올바른 꼴 · 후보(받은 값은 되돌리지 않음, Issue #1194) | `ai/service/tests/unit/chat_agent/test_tools.py::test_definitions_are_eight_p0_tools_with_closed_schemas` · `ai/service/tests/unit/chat_agent/test_tools.py::test_l1_15_wrong_args_are_bad_args_not_exceptions` · `ai/service/tests/unit/chat_agent/test_tools.py::test_l1_20_cache_hit_is_cached_without_new_evidence` · `ai/service/tests/unit/chat_agent/test_prefetch.py::test_missing_target_take_is_fetched_before_any_research_call` · `ai/service/tests/unit/chat_agent/test_tool_errors.py::test_bad_args_name_the_field_and_the_allowed_form_without_echoing_input` |
+| ⑤ 상태 관리 | 서명 상태로 이어 부르기(누적량 · 단계 메타 유지), 변조 · 판 불일치 409, 물은 항목이 남으면 끊기지 않아도 PARTIAL(요청 해소, Issue #1194) | `tests/lab/test_fake_be.py::test_fm_L1_31_budget_and_turn_count_accumulate_across_resumes` · `ai/service/tests/unit/chat_agent/test_plan_progress_turn.py::test_needs_action_keeps_plan_meta_across_resume` · `ai/service/tests/unit/chat_agent/test_turn.py::test_resume_with_tampered_state_or_ids_409` · `ai/service/tests/unit/chat_agent/test_turn_contract.py::test_fm_L1_33_resume_after_a_version_change_is_409_before_any_model_call` · `ai/service/tests/unit/chat_agent/test_request_resolution.py::test_unread_item_leaves_partial_with_a_todo_step` |
 | ⑤ 예외 처리 | 도구 구현 예외 → 그 호출의 확인 실패로 잇기, 모델 실패 · 반복 · 답 쓰기 중 실패 → 확인한 데까지 | `ai/service/tests/unit/chat_agent/test_failure_rows.py::test_fm_L1_19_tool_exception_becomes_that_tools_error_and_the_run_goes_on` · `ai/service/tests/unit/chat_agent/test_turn.py::test_fm_L1_11_research_llm_failure_ends_partial` · `ai/service/tests/unit/chat_agent/test_limits.py::test_l1_16_alternating_requests_end_research_with_repeat_reason` · `ai/service/tests/unit/chat_agent/test_stream_answer.py::test_model_failure_after_a_sentence_went_out_keeps_it_and_ends_partial` |
 | ⑦ 가드레일 — 한도 | 출력 · 도구 12번 · 턴 횟수 한도, 이어 부를 때 누적량 초기화 거절 | `ai/service/tests/unit/chat_agent/test_limits.py::test_l1_39_output_cap_ends_research_with_tokens_reason` · `ai/service/tests/unit/chat_agent/test_limits.py::test_end_reason_tool_calls_when_twelve_tool_runs_are_used` · `ai/service/tests/unit/chat_agent/test_turn.py::test_seventh_turn_call_ends_without_model` · `tests/lab/test_fake_be.py::test_fm_L2_31_budget_reset_on_resume_is_rejected` |
 | ⑦ 가드레일 — 도구 허용 목록 · 범위 | 없는 · P1 도구 무효, 범위 밖 Take 는 읽지 않음, 다른 피치 Take 가져오기 실패 | `ai/service/tests/unit/chat_agent/test_tools.py::test_l1_15_unknown_or_p1_tool_is_invalid` · `ai/service/tests/unit/chat_agent/test_tools.py::test_l1_17_l1_18_take_outside_scope_is_not_found_and_remembered` · `tests/lab/test_fake_be.py::test_fm_L2_22_fetch_take_of_other_pitch_fails_and_focus_is_kept` |
@@ -498,7 +603,7 @@ uv sync                                             # .venv 를 만들고 서비
 | ⑦ 가드레일 — 로그 · 개인정보 | 로그 · 진단 기록에 사용자 글 · 값 · 키 없음, 결정 로그는 enum · 정수만, 예외 글 없음 | `tests/lab/test_fake_be.py::test_fm_L5_31_logs_and_diagnostics_hold_no_user_text_values_or_keys` · `ai/service/tests/unit/chat_agent/test_plan_progress_turn.py::test_step_text_takes_numbers_only_from_its_own_evidence` · `ai/service/tests/unit/chat_agent/test_tools.py::test_fm_L1_19_runner_exception_is_that_tools_error_without_its_text_and_not_cached` |
 | ⑧ 통합 · E2E — 분기 | 가짜 BE 로 조사 흐름 → 가져오기 → 승인 대기, 에이전트 서비스 세트 시나리오, 화면 한 턴 · 자동 목표 확인 | `tests/lab/test_fake_be.py::test_prefetch_fetch_resume_then_waits_for_approval` · `tests/lab/test_evals_agent_service.py::test_agent_service_scenario_checks_pass_with_a_scripted_model` · `e2e/tests/turn.e2e.ts::한 턴: 계획 · 답 문장 · 실행 DONE · DB 행` · `e2e/tests/goal-check.e2e.ts::리뷰 DONE 시드 → 자동 목표 확인 → GOAL_RESULT 카드 · 목표 상태 갱신` |
 | ⑧ 통합 · E2E — 계획 변경 | 모델의 update_plan → 화면 할 일 목록이 새 단계로, 신호 뒤 계획 고치기 | `e2e/tests/turn.e2e.ts::계획 갱신: 모델이 update_plan 을 부르면 화면 할 일 목록이 새 단계로 바뀐다` · `ai/service/tests/unit/chat_agent/test_signal_routes.py::test_model_plan_edits_mid_run_show_at_once_and_the_fourth_is_a_limit_error` · `ai/service/tests/unit/chat_agent/test_plan_progress_turn.py::test_plan_edit_after_signal_is_logged_with_update_plan_seq` |
-| ⑧ 통합 · E2E — 실패 | 화면 PARTIAL → 이어서 DONE, 끝 줄 없이 끊겨도 받은 문장은 PARTIAL 로, 같은 실패 행동 반복 멈춤 | `e2e/tests/partial.e2e.ts::실패 → PARTIAL(여기까지 확인했어요 · 이어서 확인) → 이어서 DONE` · `tests/lab/test_fake_be_stream.py::test_fm_L2_45_eof_after_claims_stores_received_claims_as_partial` · `tests/lab/test_fake_be.py::test_fm_L2_31_same_failed_action_twice_stops` |
+| ⑧ 통합 · E2E — 실패 | 화면 PARTIAL → 이어서 DONE, 같은 까닭의 [이어서 확인] 반복은 DONE · 같은 이유 안내로 끊음(Issue #1194), 끝 줄 없이 끊겨도 받은 문장은 PARTIAL 로, 같은 실패 행동 반복 멈춤 | `e2e/tests/partial.e2e.ts::실패 → PARTIAL(여기까지 확인했어요 · 이어서 확인) → 이어서 DONE` · `e2e/tests/partial-repeat.e2e.ts::PARTIAL → 이어서 확인 → 같은 까닭이면 DONE · 같은 이유 안내 · 버튼 없음` · `ai/service/tests/unit/chat_agent/test_guidance.py::test_continue_with_the_same_partial_notice_ends_done` · `tests/lab/test_fake_be_stream.py::test_fm_L2_45_eof_after_claims_stores_received_claims_as_partial` · `tests/lab/test_fake_be.py::test_fm_L2_31_same_failed_action_twice_stops` |
 | ⑧ 통합 · E2E — 재개 | 승인 → 저장한 인자로만 실행 → 실행 해시와 함께 이어 부르기(앞 · 뒤 검사), 해시 불일치는 실행 0번 · 409 | `e2e/tests/approval.e2e.ts::승인 대기 → 새로고침 → 승인 → 목표 저장(한 번만)` · `e2e/tests/reassess.e2e.ts::다시 평가: 승인 → /takes/review(모델 없음) → 참고 결과 카드, 공식 리뷰 그대로` · `tests/lab/test_fake_be_approval.py::test_approve_runs_stored_args_resumes_with_executed_hash_and_keeps_the_front` · `tests/lab/test_fake_be_approval.py::test_fm_L2_40_hash_mismatch_is_409_and_runs_nothing` · `ai/service/tests/unit/chat_agent/test_approval.py::test_executed_args_hash_mismatch_or_missing_is_409` |
 | 계약 — 새 줄 · 행동 종류 없음 | 줄 5종 · 행동 5종이 스키마의 닫힌 값, 모든 턴 시험의 스트림 검사, 대표 턴에서 모두 나옴, BE 는 모르는 종류를 거절 | `ai/service/tests/unit/chat_agent/test_turn_contract.py::test_contract_sets_are_the_closed_values_of_the_response_schema` · `ai/service/tests/unit/chat_agent/test_turn_contract.py::test_turn_streams_use_every_line_kind_and_action_type_and_nothing_else` · `ai/service/tests/unit/chat_agent/test_turn_contract.py::test_run_turn_fails_a_turn_test_whose_stream_leaves_the_contract` · `tests/lab/test_fake_be.py::test_contract_new_line_kind_or_action_type_is_upstream_error_and_runs_no_action` |
 

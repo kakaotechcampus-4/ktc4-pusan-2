@@ -1,0 +1,105 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-55",
+  "set": "objectivity",
+  "group": "wrong_claim",
+  "split": "dev",
+  "act": "should",
+  "title": "'Take 1보다 Take 2에서 군더더기가 확실히 줄었다'는 틀린 변화 주장(실제 분당 1.6 → 2.3 늘어남) — 비교 뒤 '기록과 달라요' 판단, 두 값을 근거로",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-exh",
+        "title": "전시 해설 리허설",
+        "last_practiced_at": "2026-11-08T11:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "exh-t1",
+            "take_number": 1,
+            "started_at": "2026-11-04T11:00:00+09:00",
+            "completed_at": "2026-11-04T11:06:00+09:00",
+            "result": {"filler_per_min": 1.6, "filler_count": 10},
+            "review": {"dimensions": {"fluency": "STABLE"}, "score": 74}
+          },
+          {
+            "take_id": "exh-t2",
+            "take_number": 2,
+            "started_at": "2026-11-08T11:00:00+09:00",
+            "completed_at": "2026-11-08T11:06:00+09:00",
+            "result": {"filler_per_min": 2.3, "filler_count": 14},
+            "review": {"dimensions": {"fluency": "STABLE"}, "score": 72}
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-exh"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 1보다 Take 2에서 군더더기가 확실히 줄었어요.",
+      "page_take_id": "exh-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "verdict-contradicted",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": [{"verdict": "CONTRADICTED", "quote~": "군더더기"}],
+        "path": "judgements",
+        "metric": "objectivity",
+        "note": "6-3 CHANGE: '줄었'은 분당 군더더기(LOWER)에서 좋아짐, 비교 결과는 나빠짐 → CONTRADICTED"
+      },
+      {
+        "check_id": "no-supported",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": ["SUPPORTED"],
+        "path": "verdicts",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "contradicted-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "CONTRADICTED",
+        "grader": "template",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "before-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "1.6",
+        "grader": "number",
+        "derive": "exh-t1:FILLER.filler_per_min"
+      },
+      {
+        "check_id": "after-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "2.3",
+        "grader": "number",
+        "derive": "exh-t2:FILLER.filler_per_min"
+      },
+      {
+        "check_id": "compare-before-judgement",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": ["tool:compare_takes:*", "claim:ASSESSMENT"],
+        "metric": "path"
+      },
+      {
+        "check_id": "official-kept",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      }
+    ]
+  }
+}

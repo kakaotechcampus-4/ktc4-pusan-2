@@ -55,7 +55,7 @@
         "compare": "in_order",
         "expect": [
           "propose:FETCH_TAKE:AUTO",
-          "exec:FETCH_TAKE:FAIL"
+          "claim:*"
         ],
         "metric": "path"
       },
@@ -73,8 +73,8 @@
         "observe": "trajectory",
         "compare": "not_in_order",
         "expect": [
-          "exec:FETCH_TAKE:FAIL",
-          "exec:FETCH_TAKE:*"
+          "propose:FETCH_TAKE:AUTO",
+          "propose:FETCH_TAKE:AUTO"
         ],
         "metric": "path"
       },
@@ -83,7 +83,7 @@
         "observe": "trajectory",
         "grader": "regex",
         "compare": "contains",
-        "expect": "확인 실패|기본 자료에 없음",
+        "expect": "확인 실패|기본 자료에 없음|아직 불러오지 않음",
         "metric": "replan"
       },
       {
@@ -118,5 +118,6 @@
         "path": "status"
       }
     ]
-  }
+  },
+  "notes": "Issue #1194 실패 분석: 채점기는 실행된 행동에만 exec 사건을 내고 가짜 BE 는 실패 결과를 실행으로 세지 않아 exec:FETCH_TAKE:FAIL 은 나올 수 없다(../final/POSTHOC.md C 와 같은 꼴). 가져오기 제안 뒤 답 · 다시 가져오지 않음으로 본다."
 }

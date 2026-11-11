@@ -1,0 +1,174 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-06",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "Take 5 → 6 2장 청중 시선 36% → 42% 나아짐(비교) + Take 6 2장 문제 구간 확인(기록 보기)",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-cafe",
+        "title": "카페 창업 설명회 발표",
+        "last_practiced_at": "2026-11-08T11:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "cf-t4",
+            "take_number": 4,
+            "started_at": "2026-11-02T11:00:00+09:00",
+            "completed_at": "2026-11-02T11:07:00+09:00",
+            "result": {
+              "audience": [
+                0.6,
+                0.4,
+                0.58,
+                0.6
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "cf-t5",
+            "take_number": 5,
+            "started_at": "2026-11-05T11:00:00+09:00",
+            "completed_at": "2026-11-05T11:07:00+09:00",
+            "result": {
+              "audience": [
+                0.6,
+                0.36,
+                0.58,
+                0.62
+              ],
+              "script_ratio": [
+                0.18,
+                0.45,
+                0.2,
+                0.17
+              ],
+              "issues": [
+                [
+                  "GAZE_ON_SCRIPT",
+                  2,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY",
+                "script_independence": "PRIORITY"
+              },
+              "score": 67
+            }
+          },
+          {
+            "take_id": "cf-t6",
+            "take_number": 6,
+            "started_at": "2026-11-08T11:00:00+09:00",
+            "completed_at": "2026-11-08T11:07:00+09:00",
+            "result": {
+              "audience": [
+                0.61,
+                0.42,
+                0.6,
+                0.62
+              ],
+              "script_ratio": [
+                0.17,
+                0.38,
+                0.19,
+                0.16
+              ],
+              "issues": [
+                [
+                  "GAZE_ON_SCRIPT",
+                  2,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "script_independence": "PRIORITY"
+              },
+              "score": 71
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-cafe"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5에서 Take 6으로 넘어오면서 2장 청중 시선 비율이 몇 %에서 몇 %로 바뀌어 나아진 건지, 그리고 Take 6 2장에 코치가 잡은 문제 구간이 아직 남아 있는지 알려 주세요.",
+      "page_take_id": "cf-t6"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "compare-and-report",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          [
+            "tool:compare_takes:OK",
+            "tool:get_take_report:*"
+          ],
+          [
+            "tool:get_take_report:*",
+            "tool:compare_takes:OK"
+          ]
+        ],
+        "metric": "path",
+        "note": "비교 도구와 기록 보기 도구를 둘 다 실행한다(어느 Take · 절인지는 사건 글에 없어 보지 않는다). 순서는 묻지 않음"
+      },
+      {
+        "check_id": "t5-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": 0.36,
+        "grader": "number",
+        "derive": "cf-t5:GAZE.audience_ratio@2"
+      },
+      {
+        "check_id": "t6-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": 0.42,
+        "grader": "number",
+        "derive": "cf-t6:GAZE.audience_ratio@2"
+      },
+      {
+        "check_id": "improved",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "OUTCOME_WORD.IMPROVED",
+        "grader": "template",
+        "note": "audience_ratio 는 HIGHER, 같은 대본 · 버전 · 끝까지 한 Take"
+      },
+      {
+        "check_id": "no-worsened",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "OUTCOME_WORD.WORSENED",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

@@ -404,12 +404,42 @@ def test_list_pitches_items_and_score_evidence() -> None:
     score = row["last_review"]["score"]
     ev = ctx.registry.get(score["evidence_id"])
     assert score["value"] == 68 and ev.value == 68 and ev.origin == "RECORD" and ev.take_id == "t-5"
+    # 마지막 연습 시작 날짜도 근거다(한국 시간 날짜, Issue #1194 4-A)
+    lp = ctx.registry.get(row["last_practiced"]["evidence_id"])
+    assert row["last_practiced"]["value"] == "11월 1일"
+    assert (lp.path, lp.value, lp.unit) == (
+        "pitches[pitch_id=p-1].last_practiced_at",
+        "2026-11-01",
+        "date",
+    )
+    assert "마지막 연습 시작이 늦은 순" in res.data["note"]
     assert res.evidence_ids == [
         row["take_count"]["evidence_id"],
+        row["last_practiced"]["evidence_id"],
         *(d["evidence_id"] for d in dims),
         score["evidence_id"],
     ]
     assert trace.result_summary == "피치 1개(전체 1개)"
+
+
+def test_practiced_date_is_korea_time() -> None:
+    from pitch_coach_ai.features.chat_agent.tools.impl import practiced_date
+
+    # UTC 로 온 시각도 한국 시간 날짜로 읽는다(11월 9일 16시 UTC = 11월 10일 01시 KST)
+    assert practiced_date("2026-11-09T16:00:00Z") == ("2026-11-10", "11월 10일")
+    assert practiced_date("2026-11-10T09:00:00+09:00") == ("2026-11-10", "11월 10일")
+    assert practiced_date("2026-11-10T09:00:00") == (
+        "2026-11-10",
+        "11월 10일",
+    )  # 시간대가 없으면 한국 시간
+    assert practiced_date(None) is None and practiced_date("어제") is None
+
+
+def test_list_pitches_without_practice_date() -> None:
+    ctx = make_ctx()
+    ctx.pitches = [ctx.pitches[0].model_copy(update={"last_practiced_at": None})]
+    res, _ = run(ctx, "list_pitches", {"query": None})
+    assert res.data["items"][0]["last_practiced"] is None
 
 
 def test_list_pitches_query_ignores_spaces_and_hides_query_in_trace() -> None:
@@ -494,6 +524,9 @@ def test_l1_17_take_in_summary_but_not_loaded_is_not_loaded() -> None:
     ctx = make_ctx()
     res, trace = run(ctx, "get_take_report", {"take_id": "t-3", "section": "dimensions"})
     assert (res.ok, res.read_state, res.error["code"]) == (False, "NOT_LOADED", "NOT_LOADED")
+    assert (
+        res.result_summary == "아직 불러오지 않음"
+    )  # '확인한 것'에 내부 말 '기본 자료'를 쓰지 않는다(Issue #1194)
     assert res.data is None and "t-3" not in ctx.not_found and ctx.tool_cache == {}
     assert trace.outcome == "ERROR"
 
@@ -739,8 +772,9 @@ def test_compare_takes_values_outcome_and_evidence_roles() -> None:
         reg.get(e) for e in res.evidence_ids
     )
     assert res.target_ids == ["t-4", "t-5"] and res.revisions == {"t-4": 1, "t-5": 1}
-    assert trace.args_summary == "Take 4 · 5 · audience_ratio · 3장"
-    assert trace.result_summary == "audience_ratio WORSENED"
+    # 화면 '확인한 것'에 보이는 글이라 지표 · 결과를 화면 이름으로(Issue #1194)
+    assert trace.args_summary == "Take 4 · 5 · 청중 시선 · 3장"
+    assert trace.result_summary == "청중 시선 나빠짐"
 
 
 def test_compare_takes_range_metric_distance_roles_follow_take() -> None:
@@ -772,7 +806,7 @@ def test_compare_takes_not_comparable_returns_reason_only() -> None:
     assert res.ok and res.data["comparable"] is False and res.data["reason"] == "NO_DIRECTION"
     assert res.data["evidence_by_role"] == {} and res.evidence_ids == []
     assert res.data["previous"] is None and res.data["current"] is None
-    assert trace.result_summary == "비교할 수 없음(NO_DIRECTION)"
+    assert trace.result_summary == "비교할 수 없음(방향을 정할 수 없는 지표)"
 
 
 def test_l1_09_compare_takes_unknown_metric_is_rejected_without_echo() -> None:
@@ -825,7 +859,29 @@ def test_get_goals_sources_and_goal_evidence() -> None:
     )
     ev = ctx.registry.get(g["base_value"]["evidence_id"])
     assert ev.kind == "GOAL" and ev.value == 0.28 and ev.revision == 1
-    assert res.evidence_ids == [ev.evidence_id]
+    # 미션 기준값도 근거다(Issue #1194 독립 평가 — '미션 기준 40%'를 말한 문장이 숫자 검사를 통과하게)
+    mv = d["missions"]["items"][0]["target"]["value"]
+    mev = ctx.registry.get(mv["evidence_id"])
+    assert (
+        mv["value"] == 0.4
+        and mev.value == 0.4
+        and mev.path == "missions[mission_id=m-7].target.value"
+    )
+    # 기준값은 측정값이 아니다: 코드가 측정값 문장을 그릴 때 고르지 않는다(코드 검수 — "청중 시선은 40%예요"가 되지 않게)
+    from pitch_coach_ai.features.chat_agent import compose
+
+    assert compose.is_target_value(mev) and not compose.is_target_value(ev)
+    assert compose.template_partial(ctx, [mev.evidence_id]) == []
+    assert res.evidence_ids == [ev.evidence_id, mev.evidence_id]
+    from pitch_coach_ai.features.chat_agent import checks as chk
+    from pitch_coach_ai.features.chat_agent.schemas import Claim
+
+    said = Claim(
+        kind="RECORD",
+        text="리뷰가 정한 미션은 3장 청중 시선 40% 이상이에요.",
+        evidence_ids=[mev.evidence_id],
+    )
+    assert chk.check_claims([said], registry=ctx.registry, cfg=ctx.cfg) == []
     assert trace.result_summary == "미션 1 · 기준 0 · 대화 목표 있음"
 
 
@@ -836,7 +892,9 @@ def test_l1_18_goal_of_other_pitch_is_not_mixed() -> None:
     res, _ = run(ctx, "get_goals", {})
     g = res.data["conversation_goal"]["goal"]
     assert g == {"note": "다른 피치의 대화 목표다", "pitch_id": "p-2", "status": "OPEN"}
-    assert res.evidence_ids == []
+    # 다른 피치의 목표 근거는 없다(미션 기준값 근거만, 지금 범위 피치의 것)
+    paths = [ctx.registry.get(e).path for e in res.evidence_ids]
+    assert paths == ["missions[mission_id=m-7].target.value"]
 
 
 # ── search_guides ───────────────────────────────────────────────────────────

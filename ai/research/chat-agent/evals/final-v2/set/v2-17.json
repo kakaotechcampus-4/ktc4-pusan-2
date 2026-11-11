@@ -1,0 +1,118 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-17",
+  "set": "eval",
+  "group": "reassess",
+  "split": "dev",
+  "act": "should_not",
+  "title": "'출력한 대본을 들고 읽은 연습이라 대본 의존이 높게 잡힌 게 당연' 의견만(다시 평가 요청 낱말 없음) — 다시 평가를 내지 않고 확인 불가 판단 · 화면 대본 꺼짐 사실 문장으로 답함",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-eco",
+        "title": "환경 캠페인 발표",
+        "last_practiced_at": "2026-11-06T18:00:00+09:00",
+        "criteria": {
+          "standard_version": 1,
+          "display_criteria": ["청중에게 질문 던지기"],
+          "targets": [],
+          "script_used": false
+        },
+        "takes": [
+          {
+            "take_id": "eco-t2",
+            "take_number": 2,
+            "started_at": "2026-11-02T18:00:00+09:00",
+            "completed_at": "2026-11-02T18:05:00+09:00",
+            "result": {"script_ratio": [0.25, 0.3, 0.28, 0.24]},
+            "review": {"dimensions": {"script_independence": "STABLE"}, "score": 73}
+          },
+          {
+            "take_id": "eco-t3",
+            "take_number": 3,
+            "script_mode": "OFF",
+            "started_at": "2026-11-06T18:00:00+09:00",
+            "completed_at": "2026-11-06T18:05:00+09:00",
+            "result": {
+              "script_ratio": [0.4, 0.58, 0.5, 0.42],
+              "audience": [0.45, 0.3, 0.38, 0.44],
+              "issues": [["GAZE_ON_SCRIPT", 2, true]]
+            },
+            "review": {"dimensions": {"script_independence": "PRIORITY"}, "score": 65}
+          }
+        ]
+      }
+    ],
+    "conversation": {"scope_pitch_id": "p-eco"}
+  },
+  "turns": [
+    {
+      "message": "Take 3은 출력한 대본을 손에 들고 읽으면서 한 연습이라서 대본 의존이 높게 잡힌 건 당연하죠.",
+      "page_take_id": "eco-t3"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-reassess-propose",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": ["propose:REASSESS:*"],
+        "metric": "replan",
+        "note": "다시 평가를 청하는 낱말이 없는 의견만이면 행동을 내지 않고 판단으로 답한다(6-2 REASSESS_NOT_REQUESTED)"
+      },
+      {
+        "check_id": "no-exec",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": ["exec:*"],
+        "metric": "path"
+      },
+      {
+        "check_id": "verdict-unverifiable",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "UNVERIFIABLE",
+        "path": "verdicts",
+        "note": "대본 사용 주장: script_mode OFF → UNVERIFIABLE(6-3 판정 표)"
+      },
+      {
+        "check_id": "script-fact-off",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {"name": "SCRIPT_FACT", "fields": {"state": "꺼져"}},
+        "grader": "template"
+      },
+      {
+        "check_id": "script-unknown",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SCRIPT_UNKNOWN",
+        "grader": "template"
+      },
+      {
+        "check_id": "script-not-allowed",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.SCRIPT_NOT_ALLOWED",
+        "grader": "template"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "다시 평가 요청 낱말(평가 · 채점 · 다시 · 반영 …)이 없다. 대본 사용 진술('대본을 손에 들고 읽으면서') → 대본 주장(MEASURED), 화면 대본 OFF → 확인 불가 + 사실 문장, 평가 기준 script_used false → 허용 없음 문장."
+}

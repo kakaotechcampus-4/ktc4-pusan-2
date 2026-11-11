@@ -1,0 +1,84 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-20",
+  "set": "eval",
+  "group": "guide",
+  "split": "dev",
+  "act": "should",
+  "title": "슬라이드 넘길 때 말과 화면이 어긋남 — 자료(g-14 슬라이드 넘김 타이밍)를 원문 그대로 인용",
+  "baseline_type": "guide",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-craft",
+        "title": "가죽 공방 브랜드 소개",
+        "last_practiced_at": "2026-11-07T18:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "cr-t1",
+            "take_number": 1,
+            "started_at": "2026-11-07T18:00:00+09:00",
+            "completed_at": "2026-11-07T18:07:00+09:00",
+            "result": {},
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-craft"
+    }
+  },
+  "turns": [
+    {
+      "message": "다음 슬라이드로 넘어갈 때마다 말이 뚝 끊기고 화면이랑 말이 따로 놀아요. 넘기는 타이밍을 어떻게 잡으면 좋을지 자료에 나온 방법으로 알려 주세요."
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "source",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "g-14",
+        "path": "source_ids"
+      },
+      {
+        "check_id": "quote-exact",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "grader": "quote"
+      },
+      {
+        "check_id": "search-then-guide",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:search_guides:OK",
+          "claim:GUIDE"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-compare",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "tool:compare_takes:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

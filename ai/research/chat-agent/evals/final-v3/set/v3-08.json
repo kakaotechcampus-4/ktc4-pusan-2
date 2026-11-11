@@ -1,0 +1,107 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-08",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "Take 3 전체 발표 시간 5분 — 정해 둔 범위(최대 4분 30초)를 넘겼는지",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-app",
+        "title": "중고 거래 앱 시연 발표",
+        "time_limit_sec": 240,
+        "lower_deviation_sec": 30,
+        "upper_deviation_sec": 30,
+        "last_practiced_at": "2026-11-08T15:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "au-t2",
+            "take_number": 2,
+            "started_at": "2026-11-04T15:00:00+09:00",
+            "completed_at": "2026-11-04T15:07:00+09:00",
+            "result": {
+              "slide_ms": 60000,
+              "plan": {
+                "target_ms": 240000,
+                "min_ms": 210000,
+                "max_ms": 270000
+              }
+            },
+            "review": {
+              "dimensions": {},
+              "score": 73
+            }
+          },
+          {
+            "take_id": "au-t3",
+            "take_number": 3,
+            "started_at": "2026-11-08T15:00:00+09:00",
+            "completed_at": "2026-11-08T15:10:00+09:00",
+            "result": {
+              "slide_ms": 75000,
+              "plan": {
+                "target_ms": 240000,
+                "min_ms": 210000,
+                "max_ms": 270000
+              }
+            },
+            "review": {
+              "dimensions": {},
+              "score": 71
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-app"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 3은 처음부터 끝까지 몇 분 걸렸어요? 제가 정해 둔 발표 시간 범위를 넘긴 건지도 알려 주세요.",
+      "page_take_id": "au-t3"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "read-report",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:*",
+          "claim:RECORD",
+          "final:DONE"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "duration",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "5분",
+        "grader": "number",
+        "note": "au-t3 TIME.duration_ms = 4장 × 75000 = 300000ms(derive 는 ms 라 적지 않음)"
+      },
+      {
+        "check_id": "over-range",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "넘|초과|길었|길어|길게|깁니|길다|길고|벗어|범위 밖|범위를 벗|상한보다|최대보다",
+        "grader": "regex",
+        "note": "계획 max_ms 270000(피치 240초 + 30초)보다 길다"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

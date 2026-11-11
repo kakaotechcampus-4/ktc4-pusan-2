@@ -1,0 +1,149 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-16",
+  "set": "eval",
+  "group": "stale",
+  "split": "dev",
+  "act": "should",
+  "title": "옛 답(Take 4 3장 31%) 뒤에 새 Take 5 — 새로 한 Take 기준으로 다시 읽어 44%",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-paint",
+        "title": "평생교육원 수채화 강좌 안내",
+        "last_practiced_at": "2026-11-09T13:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "wc-t3",
+            "take_number": 3,
+            "started_at": "2026-11-02T13:00:00+09:00",
+            "completed_at": "2026-11-02T13:07:00+09:00",
+            "result": {
+              "audience": [
+                0.6,
+                0.57,
+                0.4,
+                0.6
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "wc-t4",
+            "take_number": 4,
+            "started_at": "2026-11-05T13:00:00+09:00",
+            "completed_at": "2026-11-05T13:07:00+09:00",
+            "result": {
+              "audience": [
+                0.61,
+                0.58,
+                0.31,
+                0.6
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 68
+            }
+          },
+          {
+            "take_id": "wc-t5",
+            "take_number": 5,
+            "started_at": "2026-11-09T13:00:00+09:00",
+            "completed_at": "2026-11-09T13:07:00+09:00",
+            "result": {
+              "audience": [
+                0.62,
+                0.6,
+                0.44,
+                0.61
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 74
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-paint",
+      "history": [
+        {
+          "role": "user",
+          "text": "Take 4 3장 청중 시선 몇 %였어요?"
+        },
+        {
+          "role": "assistant",
+          "text": "Take 4 3장 청중 시선은 31%였어요.",
+          "source_ids": [
+            "wc-t4"
+          ],
+          "basis": {
+            "pitches": [
+              {
+                "pitch_id": "p-paint",
+                "takes": [
+                  {
+                    "take_id": "wc-t4",
+                    "take_number": 4
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "turns": [
+    {
+      "message": "그 뒤로 한 번 더 연습했거든요. 새로 한 Take에서는 3장 청중 시선이 몇 %로 나왔는지 다시 봐 주세요.",
+      "page_take_id": "wc-t5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "read-report",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:get_take_report:*",
+          "final:DONE"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "t5-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": 0.44,
+        "grader": "number",
+        "derive": "wc-t5:GAZE.audience_ratio@3"
+      },
+      {
+        "check_id": "names-take5",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "(Take|테이크)\\s*5(?!\\d)|5번째",
+        "grader": "regex"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "옛 답의 근거 표시는 Take 4 하나다. '새로 한 Take' = 그 뒤 Take 5(보던 Take · 가장 최근). '그때 · 아까' 낱말이 없다."
+}

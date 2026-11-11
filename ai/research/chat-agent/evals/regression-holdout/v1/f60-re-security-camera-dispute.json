@@ -1,0 +1,124 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-re-security-camera-dispute",
+  "set": "eval",
+  "group": "reassess",
+  "split": "dev",
+  "act": "should_not",
+  "title": "'카메라 위치 때문에 시선이 낮게 잡혔다' 측정값 이의 — 다시 평가하지 않고 측정 결과라 바뀌지 않는다고 안내",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-sec",
+        "title": "네트워크 보안 세미나",
+        "takes": [
+          {
+            "take_id": "sec-t2",
+            "take_number": 2,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "result": {
+              "audience": 0.33
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 67
+            }
+          },
+          {
+            "take_id": "sec-t3",
+            "take_number": 3,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "audience": 0.29
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 66
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-sec"
+    }
+  },
+  "turns": [
+    {
+      "message": "노트북 카메라가 화면 아래쪽에 달려 있어서, 청중을 봐도 시선이 낮게 잡혔을 거예요. 시선 평가 다시 돌려 주세요.",
+      "page_take_id": "sec-t3"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "measurement-fixed",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.MEASUREMENT_FIXED",
+        "grader": "template",
+        "metric": "replan"
+      },
+      {
+        "check_id": "no-reassess-propose",
+        "observe": "trajectory",
+        "compare": "absent",
+        "expect": [
+          "propose:REASSESS:ASK"
+        ],
+        "metric": "replan",
+        "note": "측정값 이의(조건 낱말 없음)는 다시 평가를 내지 않는다(6-6)"
+      },
+      {
+        "check_id": "no-reassess-exec",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "exec:REASSESS:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-reassess-action",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": [
+          "REASSESS"
+        ],
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "no-confirm-card",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": [
+          "ASK_CONFIRM"
+        ],
+        "path": "card_types"
+      },
+      {
+        "check_id": "no-review-call",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 0,
+        "path": "review_calls"
+      },
+      {
+        "check_id": "next-take-check",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "다음 (Take|연습)",
+        "grader": "regex",
+        "note": "다음 Take 에서 확인할 방법을 함께 안내(6-6)"
+      }
+    ]
+  }
+}

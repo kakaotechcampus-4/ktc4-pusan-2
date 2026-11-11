@@ -1,0 +1,104 @@
+{
+ "schema_version": "1.0",
+ "id": "path-voice-latest-first",
+ "set": "eval",
+ "group": "global_scope",
+ "split": "dev",
+ "act": "should",
+ "title": "홈(전체 범위)에서 '최근 발표에서 제 목소리 크기가 어땠나요?' — 최근 피치 'abc'의 기록으로 답하고, 범위를 바꾼 일이 묻지 않은 일처럼 앞서지 않는다",
+ "baseline_type": "scope",
+ "fixtures": {
+  "pitches": [
+   {
+    "preset": "sample"
+   },
+   {
+    "pitch_id": "p-abc",
+    "title": "abc",
+    "last_practiced_at": "2026-11-10T21:00:00+09:00",
+    "criteria": null,
+    "takes": [
+     {
+      "take_id": "abc-t1",
+      "take_number": 1,
+      "completed_at": "2026-11-10T20:00:00+09:00",
+      "result": {
+       "voice_diff_db": -0.6
+      }
+     },
+     {
+      "take_id": "abc-t2",
+      "take_number": 2,
+      "completed_at": "2026-11-10T21:00:00+09:00",
+      "result": {
+       "voice_diff_db": -1.4,
+       "issues": [
+        [
+         "VOLUME_LOW",
+         3,
+         true
+        ]
+       ]
+      }
+     }
+    ]
+   }
+  ],
+  "conversation": {
+   "scope_pitch_id": null
+  }
+ },
+ "turns": [
+  {
+   "message": "최근 발표에서 제 목소리 크기가 어땠나요?"
+  }
+ ],
+ "expected": {
+  "checks": [
+   {
+    "check_id": "names-pitch",
+    "observe": "answer",
+    "grader": "regex",
+    "compare": "contains",
+    "expect": "abc"
+   },
+   {
+    "check_id": "voice-value",
+    "observe": "answer",
+    "grader": "regex",
+    "compare": "contains",
+    "expect": "1\\.4dB 작게"
+   },
+   {
+    "check_id": "no-scope-jargon",
+    "observe": "answer",
+    "grader": "regex",
+    "compare": "absent",
+    "expect": "범위를 바꿨"
+   },
+   {
+    "check_id": "take-not-pitch",
+    "observe": "answer",
+    "grader": "regex",
+    "compare": "absent",
+    "expect": "발표인 Take"
+   },
+   {
+    "check_id": "no-skipped-step",
+    "observe": "trajectory",
+    "compare": "absent",
+    "expect": "SKIPPED",
+    "path": "plan_statuses",
+    "metric": "replan"
+   },
+   {
+    "check_id": "status",
+    "observe": "answer",
+    "compare": "equals",
+    "expect": "DONE",
+    "path": "status"
+   }
+  ]
+ },
+ "notes": "Issue #1194 화면 검토의 첫 질문(두 차례 문항 path-voice-followup 의 첫 차례). 첫 답이 기대와 다른지를 여기서 기록한다."
+}

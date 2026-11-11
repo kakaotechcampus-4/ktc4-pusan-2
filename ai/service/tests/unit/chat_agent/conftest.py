@@ -20,3 +20,28 @@ def _no_prefetch_unless_marked(
         from pitch_coach_ai.features.chat_agent.loop import Loop
 
         monkeypatch.setattr(Loop, "_prefetch_calls", lambda self: [])
+
+
+@pytest.fixture(autouse=True)
+def _no_reassess_targets_when_marked(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """기준(`targets`)을 바꾸는 다시 평가는 서비스 기본에서 켠다(`reassess_targets=True`, 확인 카드 안내 글에 기준 문구 전 · 후).
+    끈 동작(낼 수 없다는 고정 문장, Issue #1194 R5(a))을 보는 시험은 `@pytest.mark.no_reassess_targets`를 달아 끈 채 본다."""
+    if request.node.get_closest_marker("no_reassess_targets") is not None:
+        from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG
+
+        monkeypatch.setitem(DEFAULT_CONFIG.__dict__, "reassess_targets", False)
+
+
+@pytest.fixture(autouse=True)
+def _output_guard_when_marked(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """한 턴 전체를 보는 마지막 검사(output_guard.py, 6-9)는 `@pytest.mark.output_guard`를 단 시험만 켠다. 그 밖의 단위 시험은
+    앞 단계(문장 검사 · 판정 · 단계 · 신호)를 보므로 이 검사가 끼지 않게 그대로 통과시킨다. 연구 모듈의 가짜 BE 통합 시험 · E2E ·
+    평가는 서비스 기본(켬)으로 돈다."""
+    if request.node.get_closest_marker("output_guard") is None:
+        from pitch_coach_ai.features.chat_agent.output_guard import OutputGuard
+
+        monkeypatch.setattr(OutputGuard, "admit", lambda self, claim, assessments: claim)

@@ -55,10 +55,12 @@ class SystemText(StrEnum):
     OTHER_SCREEN = "현재 선택한 발표와 다른 화면의 정보예요."
     CORPUS_UPDATING = "자료가 갱신 중이라 이 조언의 근거를 확인할 수 없어요."
     REASSESS_DIFFERS = "현재 조건으로 계산한 참고 결과가 공식 리뷰와 달라요."
-    REASSESS_RECORD_CHANGED = "그 뒤 기록이 바뀌어 지금 기록 기준으로 비교했어요."
     MEASUREMENT_FIXED = "이 값은 측정 결과라 다시 평가해도 바뀌지 않아요."
     OMITTED = "자료 크기 제한으로 일부 상세를 읽지 못했어요."
     UNMEASURED = "이 항목은 측정되지 않았어요."
+    #: 한 턴 전체 검사(output_guard.py `UNVERIFIABLE_NO_CRITERION`): '확인 불가' 판정인데 값은 기록에 있고 판단 기준(리뷰 판정 ·
+    #: 문제 구간 · 대화 목표)은 없다고 확인됐을 때, 값은 인정하고 기준이 없음을 말한다(6-9, Issue #1194)
+    VALUE_NO_CRITERION = "기록된 값은 있지만 높고 낮음을 판단할 기준은 이 기록에 없어요."
     METRIC_UNMEASURED = "이 지표는 측정되지 않아 비교할 수 없어요."
     INVALID_DATA = "기록 값이나 기준이 올바르지 않아 비교하거나 판정할 수 없어요."
     RECORD_RECHECKED = "갱신된 기록을 다시 확인했어요."
@@ -86,12 +88,16 @@ class SystemText(StrEnum):
     REASSESS_NO_DATA = "이 연습은 다시 평가할 자료가 부족해요."
     REASSESS_RULES_DIFFER = "평가 규칙이 달라 같은 조건으로 비교할 수 없어요."
     REASSESS_DAILY_LIMIT = "오늘은 다시 평가를 더 할 수 없지만 다른 질문은 계속할 수 있어요."
+    #: 기준(targets)을 바꾸는 다시 평가를 이번 판에서 막았을 때(R5(a)). 대본 사용 조건 다시 평가는 된다
+    REASSESS_TARGETS_BLOCKED = (
+        "내 기준으로 바꾼 다시 평가는 지금은 할 수 없어요. "
+        "대본 사용 조건으로는 다시 평가할 수 있고, 기준은 평가 기준 화면에서 바꾼 뒤 다음 Take에서 확인할 수 있어요."
+    )
     WHICH_PITCH = "어떤 발표인지 선택해 주세요."
     PITCH_NOT_FOUND = "발표를 찾을 수 없어요."
     RECORD_NOT_FOUND = "기록을 찾을 수 없어요."
     TAKE_FETCH_FAILED = "해당 연습 기록을 가져오지 못했어요."
     SOURCE_DELETED_STOP = "근거 기록이 삭제되어 이어서 답할 수 없어요."
-    RESUME_CHANGED = "확인 중 기록이나 목표가 바뀌어 다시 확인이 필요해요."
     GOAL_CHANGED_ELSEWHERE = "이미 다른 목표로 바뀌었어요."
     NOT_VERIFIED_CLAIM = "말씀하신 내용은 기록과 맞춰 보지 못했어요."
     GOAL_UNMEASURABLE = (
@@ -119,6 +125,21 @@ class SystemText(StrEnum):
     NEXT_FIRST_PITCH = "피치를 만들어 연습하면 그 기록을 같이 볼 수 있어요."
     #: 결과 발견 안내(D4b): 이 실행에서 `SAVE_GOAL`이 성공한 답에만, 그 `ACTION_RESULT` 문장 바로 뒤에 한 번(설정 `result_discovery`)
     RESULT_DISCOVERY = "연습 뒤 대화를 다시 열면 목표 확인 결과를 볼 수 있어요."
+    #: 가장 최근 발표 질문(4-A)에 읽은 피치의 마지막 연습 시작이 모두 없을 때(turn.py `_latest_pitch_claims`)
+    LATEST_NONE = "아직 연습을 시작한 발표가 없어요."
+    #: '안 된다' 답의 다음 걸음(Issue #1194 4-E, guidance.py). 대안 문장(제목 · Take 번호를 채움)은 guidance.py 가 그린다
+    NEXT_PICK_TAKE = "그중 볼 Take를 말씀해 주시면 그 기록을 같이 볼게요."
+    NEXT_AFTER_REVIEW = "리뷰가 끝나면 점수와 미션도 같이 볼 수 있어요."
+    NEXT_ASK_FORM = "궁금한 Take와 항목을 함께 말씀해 주시면 바로 확인할게요."
+    #: 측정값 이의(`MEASUREMENT_FIXED`) 뒤 — 답에 다음 Take · 연습에서 확인할 방법이 없을 때만
+    NEXT_MEASURE_CHECK = (
+        "자리나 장치를 바꿨다면 다음 Take에서 같은 항목이 달라지는지 확인해 볼 수 있어요."
+    )
+    #: 두 번째 같은 안내의 선택지 머리말(뒤에 예시 질문을 이어 한 문장으로 낸다)
+    CHOICES_HEADER = "이렇게 물어보시면 바로 확인할 수 있어요:"
+    #: [이어서 확인] 반복 막기(4-C): 같은 안내 유형의 PARTIAL 이 이어질 때
+    REPEAT_SAME_REASON = "같은 이유로 더 확인할 수 없어요."
+    REPEAT_SPLIT = "질문을 나눠 하나씩 물어봐 주시면 그 부분부터 확인할게요."
     #: 다른 피치의 Take 를 함께 비교해 달라고 했을 때(1-3). 값은 각각 말해도 좋아짐 · 나빠짐 · 차이를 말하지 않는다
     CROSS_PITCH_NO_COMPARE = "다른 발표의 Take끼리는 비교하지 않아요. 발표마다 따로 볼 수 있어요."
     REASSESS_HYPOTHETICAL = "이 결과는 '이 조건이라면'을 가정한 참고 결과이고 공식 결과는 아니에요."
@@ -156,7 +177,8 @@ def scope_text(reason: object) -> SystemText:
 #: 실행 성공 문장 (ACTION_RESULT, 6-9 · 7-10). 행동 type → 문장
 ACTION_SUCCESS = {
     "SAVE_GOAL": "목표를 저장했어요.",
-    "FETCH_PITCH": "{title}으로 범위를 바꿨어요.",
+    # 범위를 바꾼 사실보다 무엇을 가져왔는지를 말한다('범위'는 화면 칩으로 보인다, Issue #1194 화면 검토)
+    "FETCH_PITCH": "'{title}' 기록을 가져왔어요.",
     "FETCH_TAKE": "Take {take_number} 기록을 가져왔어요.",
     "REASSESS": "참고 결과를 만들었어요. 공식 리뷰는 그대로예요.",
 }
@@ -186,6 +208,11 @@ REASSESS_CHANGE_TEXT = {
     "targets": "내 평가 기준 {count}개",
 }
 REASSESS_NOTE = "참고 결과이고 공식 결과는 그대로예요"
+#: 기준(targets)을 바꾸는 다시 평가의 확인 카드 안내(6-6). 화면이 카드의 기준 칸을 개수로만 보여도 요약 · 안내 글(받은 글
+#: 그대로 보임)로 무엇으로 다시 평가하는지 알 수 있게, 바뀌는 기준 문구를 코드가 채운다(Issue #1194 — FE 변경 없이)
+REASSESS_TARGETS_NEW = "다시 평가에 쓸 기준: {targets}"
+REASSESS_TARGETS_NOW = "지금 리뷰의 기준: {targets}"
+REASSESS_TARGETS_NOW_NONE = "지금 리뷰에는 내 평가 기준이 없어요"
 
 #: 스트림 전 오류 · error 줄의 message (로그 · BE용. 화면에는 BE가 7-9 문구로 바꿔 보인다)
 ERROR_MESSAGES = {
@@ -333,6 +360,16 @@ PLAN_TOOL_NAME = {
     "get_screen": "화면 보기",
     "search_guides": "자료 찾기",
     "fetch_take": "기록 가져오기",
+    "update_plan": "할 일 정리",
+}
+#: '확인한 것'(trace) 요약의 결과 코드 · 읽은 절 이름(화면에 보이는 글이라 내부 이름을 쓰지 않는다, Issue #1194)
+TRACE_OUTCOME = {"OK": "확인", "EMPTY": "없음", "ERROR": "확인 실패", "CACHED": "이미 확인함"}
+TRACE_SECTION = {
+    "dimensions": "리뷰 판정",
+    "improvements": "개선점",
+    "problem_segments": "문제 구간",
+    "slides": "장별 기록",
+    "mission_results": "미션 결과",
 }
 #: 대상 번호가 없는 도구의 실행 글(compare_takes · get_take_report · fetch_take 는 Take 번호를 넣어 progress.py 가 만든다)
 PLAN_EXEC = {
@@ -350,6 +387,8 @@ PLAN_NOT_COMPARABLE = {
     "NOT_COMPLETED_FULLY": "끝까지 안 한 Take",
     "MISSING_VERSION": "버전 정보 없음",
     "NO_VALUE": "측정 안 됨",
+    "DIFFERENT_VOLUME_BASE": "소리 기준 다름",
+    "NO_DIRECTION": "방향을 정할 수 없는 지표",
 }
 PLAN_NOT_COMPARABLE_OTHER = "조건 다름"
 #: 비교 결론(compare_takes `outcome`) → 단계 결과 낱말. 목록 밖은 `판단 불가`
@@ -364,7 +403,7 @@ PLAN_OUTCOME_OTHER = "판단 불가"
 #: 단계 결과 글(사실 · 상태)
 PLAN_RESULT = {
     "NOT_COMPARABLE": "비교 불가({reason})",
-    "NOT_LOADED": "기본 자료에 없음",
+    "NOT_LOADED": "아직 불러오지 않음",
     "REVIEW_MISSING": "리뷰 분석 전",
     "ERROR": "확인 실패",
     "SHORT": "시간 부족",
@@ -383,11 +422,33 @@ PLAN_RESULT = {
     "CHECKED": "확인",
     "SLIDE_CHECKED": "{slide}장 확인",
 }
+#: 대안 단계의 까닭 낱말(Issue #1194 4-F): 상황 신호에 대응해 붙은 단계는 목적 자리에 `<까닭> <대안>`을 쓴다
+#: (예 `리뷰 없어 코치 기록: Take 5 기록 → 문제 구간 있음`)
+PLAN_WHY = {
+    "REVIEW_MISSING": "리뷰 없어",
+    "NOT_COMPARABLE": "비교 불가라",
+    "NOT_LOADED": "불러오지 않아",
+    "NO_RECORD": "기록 없어",
+    "TOOL_ERROR": "확인 실패라",
+}
+#: 대안 이름(도구 · 읽은 절) — 기록 보기는 코치 결과 절이면 `코치 기록`, 리뷰 절이면 `리뷰 보기`
+PLAN_ALT_NAME = {
+    "compare_takes": "다른 Take 비교",
+    "get_take_report": "기록 보기",
+    "list_takes": "Take 목록",
+    "list_pitches": "피치 목록",
+    "get_goals": "대화 목표",
+    "fetch_take": "가져오기",
+}
+PLAN_ALT_COACH = "코치 기록"
+PLAN_ALT_REVIEW = "리뷰 보기"
 #: get_take_report 의 실행 글(읽은 절과 상관없이). 출처(코치 결과 · 리뷰)는 결과 글과 trace 요약이 보인다
 PLAN_REPORT_EXEC = "Take {n} 기록"
 #: 모델이 쓴 단계 목적에서 숫자 · Take · 장 번호를 지우고 빈 글이 되면 쓰는 목적(도구 힌트가 없거나 도구 종류 이름이 없을 때)
 PLAN_PURPOSE_FALLBACK = {"answer": "답 쓰기"}
 PLAN_PURPOSE_DEFAULT = "기록 확인"
+#: 요청 해소 검사(Issue #1194 4-B)로 답하지 못한 물은 항목이 남았을 때 남은 일로 보이는 단계
+PLAN_UNRESOLVED = "물은 항목 확인"
 
 
 # ── 조사 ─────────────────────────────────────────────────────────────────

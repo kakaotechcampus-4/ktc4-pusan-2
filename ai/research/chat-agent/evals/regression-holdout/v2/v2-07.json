@@ -1,0 +1,112 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-07",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "장마다 늘어지고 몰아치는 말 속도 — 1장 느림(248) · 3장 빠름(362) 두 문제 구간과 장별 값, 리뷰 우선 개선을 엮어 어느 장부터 손볼지 답함",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-hack",
+        "title": "사내 해커톤 결과 발표",
+        "last_practiced_at": "2026-11-08T18:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "hack-t2",
+            "take_number": 2,
+            "started_at": "2026-11-04T18:00:00+09:00",
+            "completed_at": "2026-11-04T18:05:00+09:00",
+            "result": {"cpm": [270, 300, 340, 298]},
+            "review": {"dimensions": {"pacing_rhythm": "STABLE", "audience_gaze": "STRENGTH"}, "score": 74}
+          },
+          {
+            "take_id": "hack-t3",
+            "take_number": 3,
+            "started_at": "2026-11-08T18:00:00+09:00",
+            "completed_at": "2026-11-08T18:05:00+09:00",
+            "result": {
+              "cpm": [248, 296, 362, 300],
+              "issues": [["PACE_SLOW", 1, true], ["PACE_FAST", 3, true]]
+            },
+            "review": {"dimensions": {"pacing_rhythm": "PRIORITY", "audience_gaze": "STRENGTH"}, "score": 70}
+          }
+        ]
+      }
+    ],
+    "conversation": {"scope_pitch_id": "p-hack"}
+  },
+  "turns": [
+    {
+      "message": "해커톤 발표 Take 3을 들어 보니 어떤 장은 늘어지고 어떤 장은 몰아치던데요. 장마다 말 빠르기가 실제로 어땠는지 기록으로 짚어 주고, 어느 장부터 손보는 게 좋을지 알려 줘요.",
+      "page_take_id": "hack-t3"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "read-before-record",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": ["tool:get_take_report:*", "claim:RECORD"],
+        "metric": "path",
+        "note": "기록 문장은 Take 결과(장별 값 · 문제 구간 · 차원)를 읽은 뒤에만"
+      },
+      {
+        "check_id": "slow-slide-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "248",
+        "grader": "number",
+        "derive": "hack-t3:SPEED.cpm@1"
+      },
+      {
+        "check_id": "fast-slide-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "362",
+        "grader": "number",
+        "derive": "hack-t3:SPEED.cpm@3"
+      },
+      {
+        "check_id": "slow-slide-target",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {"slide": 1},
+        "grader": "target"
+      },
+      {
+        "check_id": "fast-slide-target",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {"slide": 3},
+        "grader": "target"
+      },
+      {
+        "check_id": "record-evidence",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "path": "has_record_evidence"
+      },
+      {
+        "check_id": "no-actions",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": ["SAVE_GOAL", "REASSESS"],
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "Take 3 장별 cpm 248 · 296 · 362 · 300(느림 기준 275 · 빠름 기준 350), 문제 구간 PACE_SLOW 1장 · PACE_FAST 3장(둘 다 믿을 만함), 리뷰 우선 개선 pacing_rhythm. 시선은 강점."
+}

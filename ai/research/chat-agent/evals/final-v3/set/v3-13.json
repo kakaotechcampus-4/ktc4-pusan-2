@@ -1,0 +1,133 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-13",
+  "set": "eval",
+  "group": "not_comparable",
+  "split": "dev",
+  "act": "should_not",
+  "title": "Take 5 · 6 분당 글자 수가 기준 범위에 가까워졌는지 — Take 6 은 침묵으로 자동 종료(끝까지 했는지 모름)라 비교 결론 없이 까닭",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-gym",
+        "title": "구립 체육센터 프로그램 안내",
+        "last_practiced_at": "2026-11-08T17:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "gy-t5",
+            "take_number": 5,
+            "started_at": "2026-11-05T17:00:00+09:00",
+            "completed_at": "2026-11-05T17:07:00+09:00",
+            "result": {
+              "cpm": [
+                330,
+                342,
+                338,
+                326
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "gy-t6",
+            "take_number": 6,
+            "started_at": "2026-11-08T17:00:00+09:00",
+            "completed_at": "2026-11-08T17:07:00+09:00",
+            "result": {
+              "cpm": [
+                310,
+                318,
+                322,
+                309
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 73
+            },
+            "end_reason": "SILENCE"
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-gym"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5랑 Take 6 놓고 보면 분당 글자 수가 기준 범위에 더 가까워졌는지 판단해 줄래요?",
+      "page_take_id": "gy-t6"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "tried-compare",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:compare_takes:*",
+          "final:DONE"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "plan-not-comparable",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "비교 불가",
+        "grader": "regex",
+        "metric": "path",
+        "note": "v1 TARGET 1"
+      },
+      {
+        "check_id": "completion-unknown",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.COMPLETION_UNKNOWN",
+        "grader": "template",
+        "note": "completed_fully null(자동 종료) → 7-10 비교 불가 문장"
+      },
+      {
+        "check_id": "no-outcome-improved",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "OUTCOME_WORD.IMPROVED",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-outcome-worsened",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "OUTCOME_WORD.WORSENED",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-outcome-both-in-range",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "OUTCOME_WORD.BOTH_IN_RANGE",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-outcome-same-distance",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "OUTCOME_WORD.SAME_DISTANCE",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

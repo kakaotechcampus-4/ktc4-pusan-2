@@ -186,7 +186,12 @@ def test_out_of_scope_is_refused_after_plan() -> None:
     _, lines, data = F.run_turn(F.request(user_message="오늘 날씨 어때?"), llm)
     fd = final_ok(data)
     assert fd.status == "REFUSED"
-    assert fd.message is not None and fd.message.text == templates.SystemText.OUT_OF_SCOPE.value
+    # 핵심 고정 문장 뒤에 할 수 있는 일 · 다음 걸음(Issue #1194 4-E, guidance.py)
+    assert fd.message is not None and [c.text for c in fd.message.claims] == [
+        templates.SystemText.OUT_OF_SCOPE.value,
+        templates.SystemText.TALK_CAPABILITY.value,
+        templates.SystemText.NEXT_REVIEW.value,
+    ]
     assert len(llm.calls) == 1
 
 
@@ -209,8 +214,10 @@ def test_out_of_scope_plan_refuses_with_fixed_sentence_per_reason(
     _, _, data = F.run_turn(F.request(user_message="3장 대본 고쳐 줘"), llm)
     fd = final_ok(data)
     assert fd.status == "REFUSED"
-    assert fd.message is not None and fd.message.text == text.value
-    assert [c.kind for c in fd.message.claims] == ["SYSTEM"]
+    # 핵심 문장은 그대로 맨 앞, 그 뒤 다음 걸음(이유별 문장이 대안을 말하지 않는 것은 할 수 있는 일도, 4-E)
+    assert fd.message is not None and fd.message.claims[0].text == text.value
+    assert {c.kind for c in fd.message.claims} == {"SYSTEM"}
+    assert fd.message.claims[-1].text == templates.SystemText.NEXT_REVIEW.value
     assert len(llm.calls) == 1
 
 
@@ -232,7 +239,8 @@ def test_out_of_scope_answer_route_refuses_with_fixed_sentence_per_reason(
     _, _, data = F.run_turn(F.request(user_message="예상 질문 만들어 줘"), llm)
     fd = final_ok(data)
     assert fd.status == "REFUSED"
-    assert fd.message is not None and fd.message.text == text.value
+    assert fd.message is not None and fd.message.claims[0].text == text.value
+    assert fd.message.claims[-1].text == templates.SystemText.NEXT_REVIEW.value
 
 
 def test_mixed_request_appends_fixed_scope_sentences_and_stays_done() -> None:
@@ -862,6 +870,47 @@ def test_take_reviewed_unknown_when_goal_changed() -> None:
     assert (fd.goal_result.status, fd.goal_result.terminal) == ("UNKNOWN", False)
 
 
+@pytest.mark.parametrize(
+    ("change", "status", "sentence"),
+    [
+        # 대본 판이 다름 → 기준 불일치(끝): 목표를 새로 정하자는 문장(숫자 없음)
+        (
+            {"script_version_id": "sv-other"},
+            "BASELINE_MISMATCH",
+            "대본이나 평가 기준이 바뀌어 목표를 새로 정해야 해요",
+        ),
+        # 평가 기준 판이 다름 → 같은 문장
+        (
+            {"standard_version": 9},
+            "BASELINE_MISMATCH",
+            "대본이나 평가 기준이 바뀌어 목표를 새로 정해야 해요",
+        ),
+        # 목표 계산식 판을 지금 코드가 지원하지 않음 → 새 목표 안내(L4-12)
+        (
+            {"goal_rule_version": "goal-algo-0+000000000000"},
+            "UNKNOWN",
+            "목표 기준이 바뀌어 새 목표가 필요해요.",
+        ),
+    ],
+)
+def test_take_reviewed_states_each_judgement_without_evidence(
+    change: dict[str, Any], status: str, sentence: str
+) -> None:
+    """숫자 · 근거가 없는 판정도 판정마다 정한 문장을 낸다. 전에는 근거가 없으면 모두 '확인된 근거만 정리해서 보여 드릴게요.'
+    (PARTIAL 안내)로 덮어 기준 불일치 문장이 나올 수 없었다(Issue #1194 독립 평가)."""
+    req = take_reviewed_request(
+        None, take_id="t-6"
+    )  # 목표를 저장한 뒤 시작해 리뷰가 끝난 Take(예시 그대로)
+    req["context"]["conversation_goal"].update(change)
+    _, _, data = F.run_turn(req, None)
+    fd = final_ok(data)
+    assert fd.status == "DONE"
+    assert fd.goal_result is not None and fd.goal_result.status == status
+    text = fd.message.text  # type: ignore[union-attr]
+    assert sentence in text
+    assert "확인된 근거만 정리해서 보여 드릴게요" not in text
+
+
 # ── 검증 반영 ──────────────────────────────────────────────────────────────
 
 
@@ -1125,7 +1174,10 @@ def test_fm_L1_12_research_refusal_ends_refused() -> None:
     llm = F.FakeLlm([F.plan(assessments=[change_draft()]), LlmRefused()])
     fd = final_ok(F.run_turn(req, llm)[2])
     assert fd.status == "REFUSED"
-    assert fd.message.text == templates.SystemText.CANNOT_ANSWER.value  # type: ignore[union-attr]
+    assert [c.text for c in fd.message.claims] == [  # type: ignore[union-attr]
+        templates.SystemText.CANNOT_ANSWER.value,
+        templates.SystemText.NEXT_ASK_FORM.value,
+    ]
     assert [c.purpose for c in llm.calls] == ["RESEARCH", "RESEARCH"]
 
 
@@ -1470,7 +1522,9 @@ def test_mixed_request_keeps_the_scope_sentence_when_every_answer_sentence_is_dr
     fd = final_ok(F.run_turn(req, llm)[2])
     assert fd.status == "PARTIAL"
     texts = [c.text for c in fd.message.claims]  # type: ignore[union-attr]
-    assert texts[-1] == templates.SystemText.CONTENT_COACHING.value
+    # 범위 밖 고정 문장은 남고, 답이 안내뿐이라 그 뒤에 다음 걸음이 붙는다(Issue #1194 4-E)
+    assert templates.SystemText.CONTENT_COACHING.value in texts
+    assert texts[-1] == templates.SystemText.NEXT_REVIEW.value
     assert all("99%" not in t for t in texts)
 
 
@@ -1520,3 +1574,31 @@ def test_broken_log_sink_still_ends_with_one_error_line() -> None:
     assert status == 200
     _one_terminal(lines)
     assert data is not None and "error" in data and data["error"]["code"] == "INTERNAL_ERROR"
+
+
+def test_provider_extra_content_on_a_tool_call_is_sent_back_next_round() -> None:
+    """공급자가 도구 호출에 붙인 칸(`extra_content`, Gemini thought_signature)은 다음 조사 호출의 assistant 메시지에 받은
+    그대로 실린다(없으면 Gemini 호환 API 가 400, Issue #1194 모델 비교). 칸이 없는 OpenAI 계열은 메시지 모양이 그대로다."""
+    from pitch_coach_ai.features.chat_agent.llm_types import LlmResult, ToolCall
+
+    sig = {"google": {"thought_signature": "c2ln"}}
+    call = ToolCall(id="g-0", name="get_goals", args={}, raw_args="{}", extra=sig)
+    llm = F.FakeLlm(
+        [
+            F.plan(),
+            LlmResult(
+                message=None, tool_calls=[call], finish_reason="tool_calls", model="fake-model"
+            ),
+            F.done(),
+        ],
+        answers=[F.answer([])],
+        fixes=[F.fix({})],
+    )
+    F.run_turn(F.request(user_message="대화 목표 있어?"), llm)
+    sent = [
+        m
+        for c in llm.calls[2:]
+        for m in c.messages
+        if m.get("role") == "assistant" and m.get("tool_calls")
+    ]
+    assert sent and sent[0]["tool_calls"][0]["extra_content"] == sig

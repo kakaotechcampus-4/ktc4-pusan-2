@@ -2,18 +2,14 @@
   "user_message": "3장 시선 비율이 어땠어?",
   "expect": {
     "plan_steps": [
-      "시선 기록 확인: Take 1 기록 → 3장 확인",
-      "기록 보기: Take 1 기록 → 문제 구간 있음",
+      "시선 기록 확인: Take 1 기록 → 3장 확인 · 문제 구간 있음",
       "해당 장 기록 읽기: Take 1 기록 → 3장 확인",
-      "비율 확인하기",
       "답 쓰기"
     ],
     "claim": "28%",
     "plan_statuses": [
       "DONE",
       "DONE",
-      "DONE",
-      "SKIPPED",
       "DONE"
     ]
   },

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Sequence
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -28,7 +29,17 @@ from ..claims import ISSUE_LABEL, METRIC_LABEL, format_metric_value, volume_base
 from ..goals import compare_takes, record_read_value
 from ..prompts import PLAN_STEP_TOOLS
 from ..schemas import PlanStep, TakeSnapshot
-from ..templates import AREA_LABEL, SCREEN_STEP_LABEL
+from ..templates import (
+    AREA_LABEL,
+    PLAN_NOT_COMPARABLE,
+    PLAN_NOT_COMPARABLE_OTHER,
+    PLAN_OUTCOME,
+    PLAN_OUTCOME_OTHER,
+    PLAN_RESULT,
+    SCREEN_STEP_LABEL,
+    TRACE_OUTCOME,
+    TRACE_SECTION,
+)
 from ..values import is_number, read_dimension_state, read_metric
 
 if TYPE_CHECKING:
@@ -117,6 +128,15 @@ def _res(name: str, **kw: Any) -> ToolResult:
     return ToolResult(name=name, **kw)
 
 
+def issue_label(issue_type: Any, area: Any) -> str:
+    """문제 구간 종류의 화면 이름. 계약 밖 종류는 내부 코드(예 `FILLER_EXCESS`)를 보이지 않고 영역 이름으로('군더더기 문제',
+    영역도 모르면 '문제 구간') — 모델이 이름표를 그대로 옮겨 써도 내부 말이 답에 나오지 않게(Issue #1194 읽듯 보는 검토)."""
+    known = ISSUE_LABEL.get(str(issue_type))
+    if known:
+        return known
+    return f"{AREA_LABEL[area]} 문제" if area in AREA_LABEL else "문제 구간"
+
+
 def _not_loaded(name: str, what: str, args_summary: str) -> ToolResult:
     return _res(
         name,
@@ -128,17 +148,35 @@ def _not_loaded(name: str, what: str, args_summary: str) -> ToolResult:
         },
         read_state="NOT_LOADED",
         args_summary=args_summary,
-        result_summary="기본 자료에 없음",
+        result_summary=PLAN_RESULT[
+            "NOT_LOADED"
+        ],  # '확인한 것'에 보이는 글: 내부 말 '기본 자료' 대신 할 일 단계와 같은 말
         cacheable=False,
     )
 
 
-def _not_found(name: str, args_summary: str) -> ToolResult:
+def take_candidates(ctx: RunCtx | None, limit: int = 5) -> list[dict[str, Any]]:
+    """없는 대상을 부른 모델에게 돌려줄 후보(Issue #1194 4-D): 지금 범위 피치에서 확인된 Take(번호가 큰 것부터 `limit`개).
+    범위 밖 · 지워진 대상은 넣지 않는다(모델에게만 가는 결과, 응답 계약이 아니다)."""
+    if ctx is None:
+        return []
+    return [
+        {"take_id": t.take_id, "take_number": t.take_number}
+        for t in sorted(ctx.summaries.values(), key=lambda x: x.take_number, reverse=True)[:limit]
+    ]
+
+
+def _not_found(name: str, args_summary: str, ctx: RunCtx | None = None) -> ToolResult:
+    error: dict[str, Any] = {"code": "NOT_FOUND", "message": "범위 피치에 없는 대상이다"}
+    cands = take_candidates(ctx)
+    if cands:
+        error["candidates"] = cands
+        error["message"] += ". candidates 의 take_id 중에서 고른다"
     return _res(
         name,
         ok=False,
         data=None,
-        error={"code": "NOT_FOUND", "message": "범위 피치에 없는 대상이다"},
+        error=error,
         read_state="NOT_FOUND",
         args_summary=args_summary,
         result_summary="찾을 수 없음",
@@ -275,6 +313,31 @@ def _path_value(v: Any) -> str:
     return s if _PATH_VALUE.match(s) else "OTHER"
 
 
+#: 날짜 표기의 시간대(한국 시간, 일광 절약 없음)
+_KST = timezone(timedelta(hours=9))
+#: 피치 목록의 순서 뜻(모델에게만 가는 결과 note, 기능 문서 5-7)
+PITCH_ORDER_NOTE = (
+    "목록은 마지막 연습 시작이 늦은 순이다(분석 중 · 중단 · 실패한 Take 의 시작도 든다). "
+    "last_practiced 는 그 피치 Take 의 가장 늦은 시작 날짜(한국 시간), take_count 는 분석이 끝난 Take 수다"
+)
+
+
+def practiced_date(iso: str | None) -> tuple[str, str] | None:
+    """마지막 연습 시작 시각(ISO 8601) → (근거 값 'YYYY-MM-DD', 화면 표기 'M월 D일'), 한국 시간. 없거나 읽을 수 없으면 None.
+
+    시간대가 없는 값은 한국 시간으로 본다(BE 는 시간대를 싣는다, 5-3 `PitchSummary`)."""
+    if not iso:
+        return None
+    try:
+        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_KST)
+    d = dt.astimezone(_KST)
+    return d.strftime("%Y-%m-%d"), f"{d.month}월 {d.day}일"
+
+
 def _list_pitches(ctx: RunCtx, a: ListPitchesArgs) -> ToolResult:
     items = ctx.pitches
     if a.query:
@@ -299,7 +362,23 @@ def _list_pitches(ctx: RunCtx, a: ListPitchesArgs) -> ToolResult:
             "pitch_id": p.pitch_id,
             "title": p.title,
             "take_count": {"value": p.take_count, "evidence_id": tc.evidence_id},
+            "last_practiced": None,
         }
+        pd = practiced_date(p.last_practiced_at)
+        if pd is not None:
+            # 마지막 연습 시작 날짜도 근거다: "가장 최근에 연습한 발표"를 이 근거로 말한다(Issue #1194 4-A, 날짜 검사는 checks.py)
+            lp = ctx.registry.record(
+                pitch_id=p.pitch_id,
+                take_id=None,
+                take_number=None,
+                kind=None,
+                revision=None,
+                path=f"pitches[pitch_id={p.pitch_id}].last_practiced_at",
+                value=pd[0],
+                unit="date",
+            )
+            eids.append(lp.evidence_id)
+            row["last_practiced"] = {"value": pd[1], "evidence_id": lp.evidence_id}
         lr = p.last_review
         if lr is not None:
             # 우선 개선 차원도 근거로 낸다(피치마다 따로 말하는 전체 범위 답이 근거 없는 문장으로 빠지지 않게, 6-5)
@@ -334,7 +413,12 @@ def _list_pitches(ctx: RunCtx, a: ListPitchesArgs) -> ToolResult:
                 eids.append(ev.evidence_id)
                 row["last_review"]["score"] = {"value": lr.score, "evidence_id": ev.evidence_id}
         out.append(row)
-    data: dict[str, Any] = {"items": out, "total": ctx.pitches_total, "shown": len(ctx.pitches)}
+    data: dict[str, Any] = {
+        "items": out,
+        "total": ctx.pitches_total,
+        "shown": len(ctx.pitches),
+        "note": PITCH_ORDER_NOTE,
+    }
     if a.query and not out:
         # 이름으로 찾은 목록이 비었다: '이 이름으로 찾은 피치 0개'다(사용자의 피치 수 전체가 아님). 검색어는 경로에 넣지 않는다
         ev = ctx.registry.record(
@@ -506,13 +590,13 @@ _COUNT_METRICS = ("filler_count", "pause_count")
 
 
 def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
-    summ = f"Take 리포트 · {a.section}"
+    summ = f"Take 리포트 · {TRACE_SECTION.get(a.section, a.section)}"
     snap = _snapshot_for(ctx, a.take_id)
     if snap == "NOT_LOADED":
         return _not_loaded("get_take_report", "이 Take 결과가", summ)
     if isinstance(snap, str):
         ctx.not_found.add(a.take_id)
-        return _not_found("get_take_report", summ)
+        return _not_found("get_take_report", summ, ctx)
     tn = snap.summary.take_number
     summ = f"Take {tn} · {a.section}" + (f" · {a.slide_number}장" if a.slide_number else "")
     ctx.touch(snap.summary.take_id, ctx.scope_pitch_id)
@@ -664,7 +748,7 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
                 items.append(
                     {
                         "issue_type": seg.get("issue_type"),
-                        "label": ISSUE_LABEL.get(str(seg.get("issue_type")), seg.get("issue_type")),
+                        "label": issue_label(seg.get("issue_type"), seg.get("area")),
                         "area": seg.get("area"),
                         "slide_number": seg.get("slide_number"),
                         "start_ms": seg.get("start_ms"),
@@ -725,6 +809,24 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
                 k: m.get(k)
                 for k in ("mission_id", "status", "metric", "operator", "slide_number", "target")
             }
+            tgt = m.get("target")
+            if isinstance(tgt, (int, float)) and not isinstance(tgt, bool):
+                # 미션 기준값도 근거다: '미션 기준 45%'를 말한 문장이 숫자 검사를 통과하게(Issue #1194 독립 평가)
+                tev = ctx.registry.record(
+                    pitch_id=ctx.scope_pitch_id or "",
+                    take_id=snap.summary.take_id,
+                    take_number=tn,
+                    kind="REVIEW",
+                    revision=snap.revisions.REVIEW,
+                    path=f"review.mission_results[{i}].target",
+                    value=tgt,
+                    metric=m.get("metric"),
+                    slide_number=m.get("slide_number"),
+                    unit=ctx.cfg.metric_units.get(m.get("metric") or ""),
+                    version=ctx.version_of(snap),
+                )
+                eids.append(tev.evidence_id)
+                row["target"] = {"value": tgt, "evidence_id": tev.evidence_id}
             obs = m.get("observed")
             if isinstance(obs, (int, float)) and not isinstance(obs, bool):
                 ev = ctx.registry.record(
@@ -788,7 +890,7 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
         # 무엇을 읽었는지 출처를 앞에 붙인다(코치 Take 결과 · 리뷰, trace 요약 200자 안)
         result_summary=(
             _SOURCE_TAG[report_source((a.section,))]
-            + (f"{len(items)}개 항목" if items else (state or "OK"))
+            + (f"{len(items)}개 항목" if items else (state or TRACE_OUTCOME["OK"]))
         )[:200],
     )
 
@@ -900,7 +1002,9 @@ def report_source(sections: Sequence[str]) -> str:
 
 def _compare(ctx: RunCtx, a: CompareArgs) -> ToolResult:
     # 도구 기록에는 아는 지표 이름만 쓴다(모델이 metric 에 사용자 원문을 넣어도 진행 줄에 나오지 않게, L1-09)
-    metric_label = a.metric if a.metric in ctx.cfg.metric_units else "모르는 지표"
+    metric_label = (
+        METRIC_LABEL.get(a.metric, a.metric) if a.metric in ctx.cfg.metric_units else "모르는 지표"
+    )
     summ = "Take 비교 · " + metric_label + (f" · {a.slide_number}장" if a.slide_number else "")
     if a.metric not in ctx.cfg.metric_units:
         # 모르는 지표는 실행하지 않고, 받은 글을 결과에 되돌려 주지 않는다(5-7 엄격한 인자 · L1-09)
@@ -910,7 +1014,16 @@ def _compare(ctx: RunCtx, a: CompareArgs) -> ToolResult:
             data=None,
             error={
                 "code": "BAD_ARGS",
-                "message": "모르는 지표다. 지표 이름은 도구 설명의 목록에서 고른다",
+                "message": "모르는 지표다. 지표 이름은 fields 의 expected 에서 고른다",
+                # 틀린 칸과 올바른 꼴(받은 글은 되돌리지 않는다, 4-D). 점수 · 차원 상태는 지표가 아니다
+                "fields": [
+                    {
+                        "field": "metric",
+                        "problem": "UNKNOWN_METRIC",
+                        "expected": sorted(ctx.cfg.metric_units),
+                        "hint": "점수 · 차원 상태 · 미션은 get_take_report(section=dimensions · mission_results)로 Take 마다 읽는다",
+                    }
+                ],
             },
             args_summary=summ,
             result_summary="모르는 지표",
@@ -922,7 +1035,7 @@ def _compare(ctx: RunCtx, a: CompareArgs) -> ToolResult:
             return _not_loaded("compare_takes", "비교할 Take 결과가", summ)
         if isinstance(s, str):
             ctx.not_found.add(tid)
-            return _not_found("compare_takes", summ)
+            return _not_found("compare_takes", summ, ctx)
         snaps.append(s)
     prev, cur = snaps
     summ = f"Take {prev.summary.take_number} · {cur.summary.take_number} · {metric_label}" + (
@@ -973,7 +1086,11 @@ def _compare(ctx: RunCtx, a: CompareArgs) -> ToolResult:
                 data[f"{k}_display"] = format_metric_value(
                     a.metric, v, ctx.cfg, base=volume_base(snap)
                 )
-    result = f"{a.metric} {cmp.outcome}" if cmp.comparable else f"비교할 수 없음({cmp.reason})"
+    result = (
+        f"{metric_label} {PLAN_OUTCOME.get(cmp.outcome, PLAN_OUTCOME_OTHER)}"
+        if cmp.comparable
+        else f"비교할 수 없음({PLAN_NOT_COMPARABLE.get(cmp.reason, PLAN_NOT_COMPARABLE_OTHER)})"
+    )
     return _res(
         "compare_takes",
         ok=True,
@@ -1000,6 +1117,32 @@ def _input_takes(ctx: RunCtx, ev: Any) -> set[str]:
 
 
 # ── get_goals ─────────────────────────────────────────────────────────────
+
+
+def _mission_target_view(ctx: RunCtx, m: Any, eids: list[str]) -> Any:
+    """미션 하나를 모델에게 줄 모양으로: 기준값(`target.value`)이 숫자면 근거 id 를 달아 `{value, evidence_id}`로 둔다(대화 목표의
+    `base_value`와 같은 모양). 그래야 미션 기준값을 말한 문장이 숫자 검사를 통과한다(5-7, Issue #1194 독립 평가)."""
+    if not isinstance(m, dict):
+        return m
+    tgt = m.get("target")
+    value = tgt.get("value") if isinstance(tgt, dict) else None
+    if not isinstance(value, (int, float)) or isinstance(value, bool) or not m.get("mission_id"):
+        return m
+    metric = tgt.get("metric") if isinstance(tgt, dict) else None
+    ev = ctx.registry.record(
+        pitch_id=ctx.scope_pitch_id,
+        take_id=None,
+        take_number=None,
+        kind="REVIEW",
+        revision=None,
+        path=f"missions[mission_id={m['mission_id']}].target.value",
+        value=value,
+        metric=metric,
+        slide_number=m.get("slide_number"),
+        unit=ctx.cfg.metric_units.get(metric or ""),
+    )
+    eids.append(ev.evidence_id)
+    return {**m, "target": {**tgt, "value": {"value": value, "evidence_id": ev.evidence_id}}}
 
 
 def _get_goals(ctx: RunCtx, _a: NoArgs) -> ToolResult:
@@ -1055,11 +1198,12 @@ def _get_goals(ctx: RunCtx, _a: NoArgs) -> ToolResult:
         eids.append(ev.evidence_id)
         conversation["status"] = {"value": "NONE", "evidence_id": ev.evidence_id}
         targets_ids = [ctx.scope_pitch_id] if ctx.scope_pitch_id else []
+    mission_views = [_mission_target_view(ctx, m, eids) for m in missions]
     return _res(
         "get_goals",
         ok=True,
         data={
-            "missions": {"source": "리뷰가 정한 미션", "items": missions},
+            "missions": {"source": "리뷰가 정한 미션", "items": mission_views},
             "criteria_targets": {"source": "평가 기준", "items": targets},
             "conversation_goal": conversation,
         },

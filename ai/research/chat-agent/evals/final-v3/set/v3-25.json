@@ -1,0 +1,272 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-25",
+  "set": "eval",
+  "group": "reassess",
+  "split": "dev",
+  "act": "should",
+  "title": "보던 Take 4가 아니라 이름으로 집은 Take 3(화면 대본 전체 표시)의 대본 사용 이의 + 다시 평가 요청 — 판단 · 사실 문장 먼저, 확인 카드 → 승인 → Take 3 참고 결과, 공식 그대로",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-gov",
+        "title": "구청 주민참여예산 사업 설명회",
+        "last_practiced_at": "2026-11-09T14:00:00+09:00",
+        "criteria": {
+          "standard_version": 1,
+          "display_criteria": [
+            "주민 눈을 보며 설명하기"
+          ],
+          "targets": [],
+          "script_used": null
+        },
+        "takes": [
+          {
+            "take_id": "gv-t2",
+            "take_number": 2,
+            "started_at": "2026-11-02T14:00:00+09:00",
+            "completed_at": "2026-11-02T14:05:00+09:00",
+            "result": {
+              "script_ratio": [
+                0.22,
+                0.28,
+                0.3,
+                0.24
+              ],
+              "audience": [
+                0.55,
+                0.5,
+                0.48,
+                0.56
+              ]
+            }
+          },
+          {
+            "take_id": "gv-t3",
+            "take_number": 3,
+            "script_mode": "HIGHLIGHT",
+            "started_at": "2026-11-05T14:00:00+09:00",
+            "completed_at": "2026-11-05T14:05:00+09:00",
+            "result": {
+              "script_ratio": [
+                0.35,
+                0.5,
+                0.55,
+                0.4
+              ],
+              "audience": [
+                0.45,
+                0.35,
+                0.3,
+                0.42
+              ],
+              "issues": [
+                [
+                  "GAZE_ON_SCRIPT",
+                  2,
+                  true
+                ],
+                [
+                  "GAZE_ON_SCRIPT",
+                  3,
+                  true
+                ]
+              ]
+            }
+          },
+          {
+            "take_id": "gv-t4",
+            "take_number": 4,
+            "started_at": "2026-11-09T14:00:00+09:00",
+            "completed_at": "2026-11-09T14:05:00+09:00",
+            "result": {
+              "script_ratio": [
+                0.2,
+                0.24,
+                0.26,
+                0.2
+              ],
+              "audience": [
+                0.58,
+                0.55,
+                0.52,
+                0.6
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-gov"
+    },
+    "official_reviews": "rule"
+  },
+  "turns": [
+    {
+      "message": "지금 화면은 Take 4인데요, Take 3은 화면에 대본 전체를 띄워 둔 채로 했던 연습이었어요. 그 상황을 반영해서 Take 3을 다시 평가해 주세요.",
+      "page_take_id": "gv-t4"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "judge-then-card",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          [
+            "claim:ASSESSMENT",
+            "propose:REASSESS:ASK"
+          ],
+          [
+            "claim:RECORD",
+            "propose:REASSESS:ASK"
+          ]
+        ],
+        "metric": "replan",
+        "note": "요청보다 판단 먼저: 판단 · 사실 문장이 문장 줄로 먼저 나가고 확인 카드가 뒤따른다(6-3 · 3-3)"
+      },
+      {
+        "check_id": "reassess-flow",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "propose:REASSESS:ASK",
+          "approve:REASSESS",
+          "exec:REASSESS:OK",
+          "claim:ACTION_RESULT"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "reassess-args",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": {
+          "type": "REASSESS",
+          "args": {
+            "take_id": "gv-t3",
+            "change": {
+              "script_used": true
+            }
+          }
+        },
+        "path": "items",
+        "note": "사용자가 이름으로 집은 Take 3 · 대본 사용 조건(6-6 표)"
+      },
+      {
+        "check_id": "not-page-take",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": [
+          {
+            "type": "REASSESS",
+            "args.take_id": "gv-t4"
+          }
+        ],
+        "path": "items",
+        "note": "6-2: 사용자가 Take 를 번호로 집었으면 다른 Take(보던 Take 4)로 바꾸지 않는다"
+      },
+      {
+        "check_id": "verdict-supported",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SUPPORTED",
+        "path": "verdicts",
+        "note": "대본 사용 주장: Take 3 script_mode HIGHLIGHT → SUPPORTED(6-3 판정 표)"
+      },
+      {
+        "check_id": "script-fact",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "name": "SCRIPT_FACT",
+          "fields": {
+            "state": "전체로 켜져"
+          }
+        },
+        "grader": "template"
+      },
+      {
+        "check_id": "script-unknown",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SCRIPT_UNKNOWN",
+        "grader": "template"
+      },
+      {
+        "check_id": "script-not-allowed",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.SCRIPT_NOT_ALLOWED",
+        "grader": "template",
+        "note": "평가 기준 script_used null → '공식 평가에는 대본 사용 허용이 없어요'(6-3 대본 주장)"
+      },
+      {
+        "check_id": "after-script-independence",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "NOT_EVALUABLE",
+        "path": "cards[type=REASSESS_RESULT].after.dimensions.script_independence",
+        "note": "6-6 표: script_used true → 대본 의존 차원이 판단 불가"
+      },
+      {
+        "check_id": "before-script-independence",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "PRIORITY",
+        "path": "cards[type=REASSESS_RESULT].before.dimensions.script_independence",
+        "note": "A(바꾸지 않은 요청)는 리뷰 규칙 코드(LLM 없이)로 계산: Take 3 대본 의존 PRIORITY · 88점"
+      },
+      {
+        "check_id": "changed-fields",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": [
+          "score",
+          "dimensions.script_independence"
+        ],
+        "path": "cards[type=REASSESS_RESULT].changed_fields",
+        "note": "규칙 칸 비교(6-6 3번): A 88점 · 대본 의존 PRIORITY → B 100점 · NOT_EVALUABLE"
+      },
+      {
+        "check_id": "reassess-success",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.REASSESS",
+        "grader": "template"
+      },
+      {
+        "check_id": "one-reassess",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 1,
+        "path": "counts.REASSESS"
+      },
+      {
+        "check_id": "reference-saved",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": 1,
+        "path": "after.conversation.reassess_results"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "공식 리뷰는 리뷰 규칙 결과로 시작(official_reviews rule) → A 는 공식과 같다. 다시 평가 대상은 보던 Take 가 아니라 말로 집은 Take 3."
+}

@@ -1,0 +1,127 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-14",
+  "set": "eval",
+  "group": "not_comparable",
+  "split": "dev",
+  "act": "should",
+  "title": "Take 7 · 8 군더더기 비교 — Take 7 은 군더더기가 측정되지 않아 비교할 수 없다고 말함(비교 시도)",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-local",
+        "title": "지역 특산물 온라인 판매 설명회",
+        "last_practiced_at": "2026-11-08T19:30:00+09:00",
+        "takes": [
+          {
+            "take_id": "ol-t6",
+            "take_number": 6,
+            "started_at": "2026-11-01T19:30:00+09:00",
+            "completed_at": "2026-11-01T19:37:00+09:00",
+            "result": {
+              "filler_per_min": 2.8,
+              "filler_count": 11
+            },
+            "review": {
+              "dimensions": {},
+              "score": 71
+            }
+          },
+          {
+            "take_id": "ol-t7",
+            "take_number": 7,
+            "started_at": "2026-11-04T19:30:00+09:00",
+            "completed_at": "2026-11-04T19:37:00+09:00",
+            "result": {
+              "unmeasured": {
+                "FILLER": "TRANSCRIPT_MISSING"
+              }
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "NOT_EVALUABLE"
+              },
+              "score": 71
+            }
+          },
+          {
+            "take_id": "ol-t8",
+            "take_number": 8,
+            "started_at": "2026-11-08T19:30:00+09:00",
+            "completed_at": "2026-11-08T19:37:00+09:00",
+            "result": {
+              "filler_per_min": 2.4,
+              "filler_count": 10
+            },
+            "review": {
+              "dimensions": {},
+              "score": 73
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-local"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 7과 Take 8 사이에 '음', '어' 같은 군더더기가 분당 몇 번 줄었는지 비교해 주세요.",
+      "page_take_id": "ol-t8"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "tried-compare",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:compare_takes:*",
+          "final:DONE"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "plan-unmeasured",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "측정 안 됨",
+        "grader": "regex",
+        "metric": "path",
+        "note": "비교 불가(측정 안 됨) — v1 TARGET 1"
+      },
+      {
+        "check_id": "unmeasured-said",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "측정되지 않",
+        "grader": "regex",
+        "note": "METRIC_UNMEASURED · UNMEASURED 어느 쪽이든(7-10)"
+      },
+      {
+        "check_id": "no-outcome-improved",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "OUTCOME_WORD.IMPROVED",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-outcome-worsened",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "OUTCOME_WORD.WORSENED",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

@@ -1,0 +1,145 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-16",
+  "set": "eval",
+  "group": "reassess",
+  "split": "dev",
+  "act": "should",
+  "title": "'아까 그 조건 그대로 한 번 더' — 대화 기록의 앞 요청(Take 2 · 대본 전체 띄움)을 되살려 Take 2 · script_used true 로 다시 평가(보던 Take 3 이 아님) → 승인 → 참고 결과",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-arch",
+        "title": "건축 설계 리뷰 발표",
+        "last_practiced_at": "2026-11-09T10:00:00+09:00",
+        "criteria": {
+          "standard_version": 1,
+          "display_criteria": ["도면을 가리키며 설명하기"],
+          "targets": [],
+          "script_used": null
+        },
+        "takes": [
+          {
+            "take_id": "arch-t2",
+            "take_number": 2,
+            "script_mode": "HIGHLIGHT",
+            "started_at": "2026-11-05T10:00:00+09:00",
+            "completed_at": "2026-11-05T10:05:00+09:00",
+            "result": {
+              "script_ratio": [0.45, 0.5, 0.55, 0.48],
+              "audience": [0.4, 0.38, 0.35, 0.4],
+              "issues": [["GAZE_ON_SCRIPT", 3, true]]
+            }
+          },
+          {
+            "take_id": "arch-t3",
+            "take_number": 3,
+            "started_at": "2026-11-09T10:00:00+09:00",
+            "completed_at": "2026-11-09T10:05:00+09:00",
+            "result": {"script_ratio": [0.2, 0.22, 0.25, 0.2], "audience": [0.6, 0.58, 0.55, 0.6]}
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-arch",
+      "history": [
+        {
+          "role": "user",
+          "text": "Take 2는 프롬프터에 대본 전체를 띄워 놓고 읽은 연습이었어요. 그 조건으로 다시 평가해 주세요."
+        },
+        {
+          "role": "assistant",
+          "text": "기록에는 화면 대본이 전체로 켜져 있었어요. 실제로 대본을 봤는지는 기록으로 확인할 수 없어요. 참고 결과를 만들었어요. 공식 리뷰는 그대로예요."
+        }
+      ]
+    },
+    "official_reviews": "rule"
+  },
+  "turns": [
+    {
+      "message": "결과를 한 번 더 확인해 보고 싶어서요. 아까 그 조건 그대로 두고 다시 평가 한 번만 더 부탁해요.",
+      "page_take_id": "arch-t3"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "reassess-flow",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": ["propose:REASSESS:ASK", "approve:REASSESS", "exec:REASSESS:OK", "claim:ACTION_RESULT"],
+        "metric": "path"
+      },
+      {
+        "check_id": "restored-args",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": {"type": "REASSESS", "args": {"take_id": "arch-t2", "change": {"script_used": true}}},
+        "path": "items",
+        "metric": "replan",
+        "note": "같은 조건으로 다시 요청: 기록에서 다시 평가를 청한 가장 최근 사용자 말의 조건(대본 사용)과 그 말의 Take(Take 2)로 낸다(6-6). 보던 Take 3 으로 바꾸지 않는다"
+      },
+      {
+        "check_id": "not-page-take",
+        "observe": "actions_executed",
+        "compare": "absent",
+        "expect": {"type": "REASSESS", "target": "arch-t3"},
+        "path": "items",
+        "metric": "replan"
+      },
+      {
+        "check_id": "changed-script-independence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": ["score", "dimensions.script_independence"],
+        "path": "cards[type=REASSESS_RESULT].changed_fields",
+        "note": "리뷰 규칙 코드(LLM 없이)로 계산: Take 2 A 대본 의존 PRIORITY · 88점 → B NOT_EVALUABLE · 100점"
+      },
+      {
+        "check_id": "result-card-take",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "arch-t2",
+        "path": "cards[type=REASSESS_RESULT].take_id"
+      },
+      {
+        "check_id": "after-script-independence",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "NOT_EVALUABLE",
+        "path": "cards[type=REASSESS_RESULT].after.dimensions.script_independence"
+      },
+      {
+        "check_id": "reassess-success",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.REASSESS",
+        "grader": "template"
+      },
+      {
+        "check_id": "one-reassess",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 1,
+        "path": "counts.REASSESS"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "이번 말은 조건 · 대상을 새로 말하지 않고 '같은 조건' + 다시 평가 요청형이다. 앞 사용자 말이 Take 2 의 대본 사용(프롬프터 · 띄워)을 말했다 → REASSESS(arch-t2, script_used true). 공식 리뷰는 리뷰 규칙 결과로 시작."
+}

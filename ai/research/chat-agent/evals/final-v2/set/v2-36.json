@@ -1,0 +1,153 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-36",
+  "set": "eval",
+  "group": "failure",
+  "split": "dev",
+  "act": "should_not",
+  "title": "[이어서 확인 · 대화 기록] 앞 답 안내가 '확인한 자료가 많아…'인데 이번엔 시간 한도 — 안내가 달라 반복 차단이 아니라 보통 PARTIAL(남은 단계 TODO)",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-sport",
+        "title": "사내 체육대회 개회사",
+        "takes": [
+          {
+            "take_id": "sp-t1",
+            "take_number": 1,
+            "started_at": "2026-10-30T08:30:00+09:00",
+            "completed_at": "2026-10-30T08:37:00+09:00",
+            "result": {
+              "cpm": [
+                322,
+                330,
+                318,
+                340
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "sp-t2",
+            "take_number": 2,
+            "started_at": "2026-11-03T08:30:00+09:00",
+            "completed_at": "2026-11-03T08:37:00+09:00",
+            "result": {
+              "cpm": [
+                315,
+                336,
+                329,
+                351
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "sp-t3",
+            "take_number": 3,
+            "started_at": "2026-11-06T08:30:00+09:00",
+            "completed_at": "2026-11-06T08:37:00+09:00",
+            "result": {
+              "cpm": [
+                322,
+                341,
+                333,
+                347
+              ],
+              "audience": [
+                0.58,
+                0.49,
+                0.62,
+                0.44
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-06T08:30:00+09:00"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-sport",
+      "history": [
+        {
+          "role": "user",
+          "text": "Take 1부터 Take 3까지 장마다 말 속도랑 청중 시선이 어땠는지 전부 정리해 줘"
+        },
+        {
+          "role": "assistant",
+          "text": "Take 3 1장 말 속도는 분당 322자예요.\n확인한 자료가 많아 이번 답은 여기까지만 제공할게요."
+        }
+      ]
+    }
+  },
+  "turns": [
+    {
+      "message": "이어서 확인해 줘",
+      "page_take_id": "sp-t3",
+      "faults": [
+        {
+          "kind": "model_delay",
+          "after_call": 2,
+          "seconds": 40
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "partial",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "PARTIAL",
+        "path": "status",
+        "metric": "replan",
+        "note": "TARGET 3: 직전 답의 안내 문장과 이번 안내가 다르면 보통 PARTIAL"
+      },
+      {
+        "check_id": "no-same-reason",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "같은 이유로 더 확인할 수 없어요",
+        "grader": "regex"
+      },
+      {
+        "check_id": "guidance",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "시간이나 처리 한도에 닿아 확인한 내용까지만 알려드릴게요\\.|답 일부를 확인하지 못해 확인된 내용만 알려드릴게요\\.",
+        "grader": "regex"
+      },
+      {
+        "check_id": "todo",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "TODO",
+        "path": "plan_statuses",
+        "metric": "replan"
+      },
+      {
+        "check_id": "budget-stop",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "decision:BUDGET_LOW:*",
+          "final:PARTIAL"
+        ],
+        "metric": "path"
+      }
+    ]
+  },
+  "notes": "history 쪽: 직전 어시스턴트 답은 크기 한도 안내('확인한 자료가 많아…')로 끝남. 이번 차례 장애는 시간 한도(두 번째 모델 호출 뒤 40초)라 안내 문장이 다르다 → 반복 차단 아님."
+}

@@ -1,0 +1,130 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-17",
+  "set": "eval",
+  "group": "stale",
+  "split": "dev",
+  "act": "should_not",
+  "title": "옛 답의 근거 Take 2 가 지워짐 — 가려진 옛 숫자를 되풀이하지 않고 기록을 찾을 수 없다고 말함",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-yoga",
+        "title": "요가 원데이 클래스 소개",
+        "last_practiced_at": "2026-11-09T08:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "yg-t3",
+            "take_number": 3,
+            "started_at": "2026-11-06T08:00:00+09:00",
+            "completed_at": "2026-11-06T08:07:00+09:00",
+            "result": {
+              "audience": [
+                0.6,
+                0.47,
+                0.58,
+                0.6
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "yg-t4",
+            "take_number": 4,
+            "started_at": "2026-11-09T08:00:00+09:00",
+            "completed_at": "2026-11-09T08:07:00+09:00",
+            "result": {
+              "audience": [
+                0.6,
+                0.5,
+                0.58,
+                0.6
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 73
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-yoga",
+      "history": [
+        {
+          "role": "user",
+          "text": "Take 2에서 2장 청중 시선 얼마였어요?"
+        },
+        {
+          "role": "assistant",
+          "text": "Take 2 2장 청중 시선은 38%였어요.",
+          "source_ids": [
+            "yg-t2"
+          ],
+          "basis": {
+            "pitches": [
+              {
+                "pitch_id": "p-yoga",
+                "takes": [
+                  {
+                    "take_id": "yg-t2",
+                    "take_number": 2
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "turns": [
+    {
+      "message": "예전에 알려 준 Take 2 2장 시선 비율 숫자 그대로 다시 한 번만 말해 줘요.",
+      "page_take_id": "yg-t4"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-old-number",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "38%",
+        "grader": "number",
+        "note": "지워진 근거의 옛 답은 BE 가 가린다(6-8 SOURCE_DELETED). 옛 숫자를 근거로 쓰지 않는다"
+      },
+      {
+        "check_id": "not-found-core",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "기록을 찾을 수 없어요|해당 연습 기록을 가져오지 못했어요",
+        "grader": "regex",
+        "note": "물은 Take 가 그 발표에 없음(v2 TARGET 4 핵심 문장)"
+      },
+      {
+        "check_id": "no-save-reassess",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": [
+          "SAVE_GOAL",
+          "REASSESS"
+        ],
+        "path": "types"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      }
+    ]
+  },
+  "notes": "Take 2 는 저장소에 없다(지워짐). 대화 기록의 옛 답은 source_ids 가 지워져 가려져 실린다."
+}

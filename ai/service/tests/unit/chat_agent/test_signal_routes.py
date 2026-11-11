@@ -1,8 +1,8 @@
 """상황 신호마다 이어지는 경로 · 실행 중 계획 고치기의 턴 시험 (기능 문서 6-1 7번 · 11-5 결정 로그, 목표 동작 1 · 4절).
 
-가짜 모델(fakes.py)로 한 턴을 돌려, 신호(비교 불가 · 기본 자료에 없음 · 리뷰 없음 · 기록 없음 · 도구 실패 · 시간 · 호출 부족 · 사용자
+가짜 모델(fakes.py)로 한 턴을 돌려, 신호(비교 불가 · 아직 불러오지 않음 · 리뷰 없음 · 기록 없음 · 도구 실패 · 시간 · 호출 부족 · 사용자
 이의)마다 그 뒤의 도구 순서 · 할 일 목록 · 결정 로그 줄 · 끝 상태가 달라지는지 본다. 다른 파일에 이미 있는 경로는 다시 두지 않는다:
-- 비교 불가 → 다른 대상(ALT_TOOL) · 계획 고치기(PLAN_EDIT) · 대응 없음(NONE), 기본 자료에 없음 → 가져오기(ACTION), 시간 부족:
+- 비교 불가 → 다른 대상(ALT_TOOL) · 계획 고치기(PLAN_EDIT) · 대응 없음(NONE), 아직 불러오지 않음 → 가져오기(ACTION), 시간 부족:
   test_plan_progress_turn.py
 - 도구 실패 → 다른 도구로 확인(ALT_TOOL) → DONE: test_failure_rows.py `test_fm_L1_19_tool_exception_becomes_that_tools_error_and_the_run_goes_on`
 기준표 대응 시험 목차는 연구 README '기준표 대응 시험 목차'.
@@ -27,6 +27,9 @@ from .test_plan_progress_turn import (
     plan_lines,
 )
 from .test_turn import COMPARE, MSG, final_ok
+
+#: 리뷰 없음 · 기록 없음 신호를 모델에게 묻던 이전 동작(Issue #1194 4-G 의 코드 대응을 끈 설정)
+LEGACY = load_config(code_signal_responses=False)
 
 
 def research_blocks(llm: F.FakeLlm) -> list[dict[str, Any]]:
@@ -65,7 +68,8 @@ def test_review_missing_is_shown_then_the_model_reads_the_coach_result_instead()
         fixes=[F.fix({0: None})],
     )
     log: list[dict[str, Any]] = []
-    _, lines, data = F.run_turn(req, llm, log=log)
+    # 모델이 신호에 대응하던 길(4-G 코드 대응을 끈 설정). 코드 대응 길은 test_signal_code.py
+    _, lines, data = F.run_turn(req, llm, log=log, cfg=LEGACY)
     fd = check_stream(lines, data)
     assert tools_of(data) == [("get_take_report", "EMPTY"), ("get_take_report", "OK")]
     assert decisions(log) == [
@@ -90,7 +94,8 @@ def test_review_missing_is_shown_then_the_model_reads_the_coach_result_instead()
         "note": None,
     }
     assert len(plans[1]) == 2 and len(plans[-1]) == 3
-    assert data["plan"][1]["step"].startswith("기록 보기: Take 5 기록 → ")
+    # 모델이 고른 대안도 까닭과 함께 보인다(Issue #1194 4-F)
+    assert data["plan"][1]["step"].startswith("리뷰 없어 코치 기록: Take 5 기록 → ")
     assert fd.status == "DONE"
     assert [p["status"] for p in data["plan"]] == ["DONE", "DONE", "DONE"]
 
@@ -122,7 +127,7 @@ def test_no_record_offers_the_none_answer_and_the_model_answers_without_more_rea
         answers=[answer],
     )
     log: list[dict[str, Any]] = []
-    _, lines, data = F.run_turn(no_take_request(), llm, log=log)
+    _, lines, data = F.run_turn(no_take_request(), llm, log=log, cfg=LEGACY)
     fd = check_stream(lines, data)
     assert tools_of(data) == [("list_pitches", "OK")]
     assert decisions(log) == [
@@ -363,12 +368,11 @@ def test_model_plan_edits_mid_run_show_at_once_and_the_fourth_is_a_limit_error()
     # 표시 갱신은 고치기보다 많이 나갔다(도구 두 번 + 끝 처리) — 한도와 상관없음
     model_edit_lines = 3
     assert len(plans) > 1 + model_edit_lines + 2
-    # 끝: 실행한 두 단계 DONE, 셋째 고치기의 실행하지 않은 단계 SKIPPED, 답 정리는 답이 있어 DONE
+    # 끝: 실행한 두 단계 DONE, 셋째 고치기의 실행하지 않은 단계는 끝 목록에서 빠지고, 답 정리는 답이 있어 DONE
     assert fd.status == "DONE"
     assert [(s["step"].split(":")[0], s["status"]) for s in data["plan"]] == [
         ("기록 확인", "DONE"),
         ("문제 구간 보기", "DONE"),
-        ("목표 확인", "SKIPPED"),
         ("답 정리", "DONE"),
     ]
     assert data["plan"] == plans[-1]

@@ -1,0 +1,142 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-38",
+  "set": "eval",
+  "group": "failure",
+  "split": "dev",
+  "act": "should_not",
+  "title": "대본 사용 조건 다시 평가를 승인했는데 실행 직전에 Take 4 가 지워짐 — 실패 기록, 성공 문장 · 참고 결과 카드 없음, 다시 평가를 다시 내지 않음",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-pet",
+        "title": "반려동물 입양 캠페인 발표",
+        "takes": [
+          {
+            "take_id": "pt-t3",
+            "take_number": 3,
+            "started_at": "2026-11-04T16:00:00+09:00",
+            "completed_at": "2026-11-04T16:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "pt-t4",
+            "take_number": 4,
+            "started_at": "2026-11-07T16:00:00+09:00",
+            "completed_at": "2026-11-07T16:07:00+09:00",
+            "result": {
+              "script_ratio": [
+                0.4,
+                0.45,
+                0.5,
+                0.42
+              ],
+              "audience": [
+                0.45,
+                0.42,
+                0.38,
+                0.44
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "script_independence": "PRIORITY",
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 64
+            },
+            "script_mode": "HIGHLIGHT"
+          }
+        ],
+        "last_practiced_at": "2026-11-07T16:00:00+09:00"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-pet"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 4는 화면에 대본을 띄워 놓고 한 연습이었어요. 대본 보고 한 발표라는 조건으로 다시 평가해 주세요.",
+      "page_take_id": "pt-t4",
+      "faults": [
+        {
+          "kind": "delete_before_action",
+          "action": "REASSESS",
+          "target": "pt-t4"
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "proposed-approved",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "propose:REASSESS:ASK",
+          "approve:REASSESS"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "not-executed",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "exec:REASSESS:OK"
+        ],
+        "metric": "replan"
+      },
+      {
+        "check_id": "no-retry",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "approve:REASSESS",
+          "propose:REASSESS:*"
+        ],
+        "metric": "replan",
+        "note": "5-8: 실패한 행동을 같은 인자로 되풀이하지 않는다"
+      },
+      {
+        "check_id": "failed-record",
+        "observe": "actions_executed",
+        "compare": "contains",
+        "expect": {
+          "type": "REASSESS",
+          "status": "FAILED",
+          "error_code": "NOT_FOUND"
+        },
+        "path": "items"
+      },
+      {
+        "check_id": "no-success-sentence",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "ACTION_SUCCESS.REASSESS",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-result-card",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "REASSESS_RESULT",
+        "path": "card_types"
+      },
+      {
+        "check_id": "no-reference-saved",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": 0,
+        "path": "after.conversation.reassess_results"
+      }
+    ]
+  },
+  "notes": "장애: 승인 뒤 REASSESS 실행 직전에 pt-t4 를 지운다. 실패 행동은 trajectory 에 exec 사건이 없어 actions_executed 로 본다."
+}

@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 import threading
 from collections import Counter
 from collections.abc import Callable
@@ -37,8 +38,12 @@ from typing import Any
 
 from . import checks as chk
 from . import compose, templates
+from .output_guard import OutputGuard
 from .schemas import Assessment, Claim
 from .stream_json import AssessmentsDone, ClaimClosed, StreamTracker, ValueDone
+
+#: 피치 목록 근거의 경로(`pitches[pitch_id=…].…`)에서 피치 id
+_PITCH_PATH = re.compile(r"pitches\[pitch_id=([^\]]+)\]")
 
 #: 모델 문장을 스트림으로 내도 되는 답 초안 route. 범위 밖 답(OUT_OF_SCOPE)은 고정 거절 문장으로 끝나므로 내지 않는다
 STREAM_ROUTES = ("ANSWER", "NO_GUIDE", "CANNOT_DO")
@@ -116,6 +121,37 @@ def with_prefix(emitted: list[dict[str, Any]], claims: list[Claim]) -> list[Clai
     return [*(Claim.model_validate(d) for d in emitted), *rest]
 
 
+def _action_answers(lp: Any, sentence: str) -> bool:
+    """덮이지 않은 절의 '확인하지 못했어요' 문장이 이 실행이 낸 다시 평가 요청이면 붙이지 않는다: 확인 카드 · 행동 결과가 그 절의
+    답이다(Issue #1194 읽듯 보는 검토 — 다시 평가 카드와 '확인하지 못했어요'가 함께 나와 어긋나 보였다)."""
+    pending = lp.st.pending_action or {}
+    targets = [
+        *(
+            [(pending.get("args") or {}).get("take_id")]
+            if pending.get("type") == "REASSESS"
+            else []
+        ),
+        *(e.get("take_id") for e in lp.st.executed if e.get("type") == "REASSESS"),
+    ]
+    if not targets:
+        return False
+    cfg = lp.cfg
+    # 다시 평가 행동을 낼 때와 같은 요청 판별 낱말로 본다('다시 확인해줘' · '반영해 줘'도, 실사용 흐름 점검 장면 4). 넓은 낱말만
+    # 있으면 요청 꼴도 있어야 한다: "Take 4는 소리 크기가 평가 기준보다 좋았어"는 요청이 아니라 주장이다
+    if not any(w in sentence for w in cfg.reassess_request_words) and not (
+        any(w in sentence for w in cfg.reassess_request_hints)
+        and any(w in sentence for w in cfg.reassess_request_endings)
+    ):
+        return False
+    # 절이 Take 를 집었으면 다시 평가 대상 Take 여야 한다(Take 5 카드가 Take 4 절의 안내를 지우지 않게). 대상을 모르는
+    # 옛 실행 상태(take_id 없음)는 전처럼 받는다
+    named = chk.named_take_numbers(sentence)
+    summaries = lp.ctx.summaries
+    if not named or any(not t or t not in summaries for t in targets):
+        return True
+    return bool(named & {summaries[t].take_number for t in targets})
+
+
 class ClaimLines:
     """문장 줄(`claim`, 5-4)을 낸다. 실행 전체에서 이어지는 번호와, 그 줄이 처음 쓰는 근거 · 자료 사본과, 아직 보내지 않은
     확정 판단을 싣는다. 앞 응답에서 낸 문장 · 내보낸 판단과 그 근거는 이미 보낸 것으로 센다(서명 상태에서 되살림)."""
@@ -137,6 +173,21 @@ class ClaimLines:
         for a in lp.st.exported:
             self.sent_as.add(a["assessment_id"])
             self._mark(a.get("evidence_ids") or [], a.get("source_ids") or [])
+        #: 한 턴 전체를 보는 마지막 검사(output_guard.py): 내보내기 직전에 이미 나간 문장 · 도구 결과와 견준다
+        self.guard = OutputGuard(lp)
+        #: 이 응답에서 가드레일이 뺀 문장 · 바꾼 문장(원래 문장 키 → 바꾼 문장). 끝 줄 조립이 같은 결정을 쓴다(turn.py `_finish`)
+        self.dropped: set[str] = set()
+        self.replaced: dict[str, Claim] = {}
+
+    def decided(self, claims: list[Claim]) -> list[Claim]:
+        """흘려보내는 동안 가드레일이 뺀 문장은 빼고 바꾼 문장은 바꾼 것으로(끝 줄 답이 낸 문장 줄과 같게)."""
+        out = []
+        for c in claims:
+            k = _key(c)
+            if k in self.dropped:
+                continue
+            out.append(self.replaced.get(k, c))
+        return out
 
     def _mark(self, ev_ids: list[str], src_ids: list[str]) -> None:
         self.sent_ev.update(e["evidence_id"] for e in compose.referenced(self.lp.ctx, ev_ids))
@@ -149,12 +200,22 @@ class ClaimLines:
         *,
         record: bool = True,
         cards: list[dict[str, Any]] | None = None,
-    ) -> None:
+        guarded: bool = False,
+    ) -> bool:
         """문장 하나를 줄로 낸다. `record`면 서명 상태의 낸 문장(`st.emitted`)에도 더한다(끝 줄 조립 뒤의 남은 문장은 False).
+        내보내기 직전에 한 턴 전체 검사(가드레일)를 거친다(`guarded`면 이미 거친 문장). 빼면 내지 않고 False.
 
         `cards`는 끝 줄 message 에 조립해 둔 자료 카드 사본이다. 주면 문장 줄이 처음 보내는 카드를 이 사본에서 가져온다 —
         검사 · 고치기를 거쳐 모양이 바뀐 `Claim` 은 내부 인용 문장(`quote`)을 잃으므로 다시 그리지 않는다(문장 줄과 끝 줄의 보이는 인용이 같게)."""
         lp = self.lp
+        if not guarded:
+            got = self.guard.admit(claim, confirmed)
+            if got is None:
+                self.dropped.add(_key(claim))
+                return False
+            if got is not claim:
+                self.replaced[_key(claim)] = got
+                claim = got
         new_as = [a for a in confirmed if a["assessment_id"] not in self.sent_as]
         ev_ids = [*claim.evidence_ids, *(e for a in new_as for e in a.get("evidence_ids") or [])]
         src_ids = [*claim.source_ids, *(s for a in new_as for s in a.get("source_ids") or [])]
@@ -194,8 +255,10 @@ class ClaimLines:
         self.sent_src.update(src_ids)
         self.sent_as.update(a["assessment_id"] for a in new_as)
         self.sent_assessments.extend(new_as)
+        self.guard.note(claim, confirmed)
         if record:
             lp.st.emitted.append(dump)
+        return True
 
 
 @dataclass
@@ -459,7 +522,10 @@ class Composer:
         if not lead_closed:
             return out, flags, code
         if fin.result is not None:
-            for s in [*fin.result.uncovered_sentences, *fin.result.dropped_notice]:
+            uncovered = [
+                s for s in fin.result.uncovered_sentences if not _action_answers(self.lp, s)
+            ]
+            for s in [*uncovered, *fin.result.dropped_notice]:
                 add(compose._claim("SYSTEM", s), False)
         # 비교할 수 없다는 도구 결과의 까닭은 코드 문장으로(모델이 근거 없는 까닭 문장을 써서 빠지지 않게, 7-10)
         seen_nc: set[str] = set()
@@ -569,7 +635,47 @@ class Composer:
         failures += self._quote_lock(
             claims, {f.claim_index for f in failures if f.claim_index is not None}
         )
+        failures += self._latest_conflicts(
+            claims, code, {f.claim_index for f in failures if f.claim_index is not None}
+        )
         return failures
+
+    def _latest_conflicts(
+        self, claims: list[Claim], code: set[str], failed: set[int]
+    ) -> list[chk.CheckFailure]:
+        """'가장 최근 발표' 질문(4-A)에서 최근 낱말을 쓴 모델 기록 문장이 최근 피치가 아닌 피치의 목록 근거만 이었으면 걸린다
+        (고치지 않고 버린다). 대상은 코드가 정하고(`Loop.latest_practiced`) 그 근거로 코드 문장을 내므로, 다른 피치를 '가장
+        최근'이라 한 문장이 코드 문장과 엇갈려 나가지 않게 한다. 코드가 만든 문장은 보지 않는다."""
+        lp = self.lp
+        if not lp.latest_question:
+            return []
+        found = lp.latest_practiced()
+        if not found or found[1] is None:
+            return []
+        target = found[1].pitch_id
+        out: list[chk.CheckFailure] = []
+        for i, c in enumerate(claims):
+            if i in failed or c.kind != "RECORD" or c.text in code:
+                continue
+            if not any(w in c.text for w in lp.cfg.latest_pitch_words):
+                continue
+            pids = set()
+            for e in c.evidence_ids:
+                ev = lp.ctx.registry.get(e)
+                m = _PITCH_PATH.match(ev.path) if ev is not None else None
+                if m:
+                    pids.add(m.group(1))
+            if pids and target not in pids:
+                out.append(
+                    chk.CheckFailure(
+                        i,
+                        chk.CheckId.TARGET_MISMATCH,
+                        "가장 최근 발표가 아닌 발표를 최근이라고 말함",
+                        claim_kind=c.kind,
+                        unfixable=True,
+                    )
+                )
+        return out
 
     # ── 초안을 다 받은 뒤 ────────────────────────────────────────────
     def finish(self, draft: dict[str, Any], messages: list[dict[str, Any]]) -> Composed:

@@ -1,0 +1,187 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-scope-fetch-other-pitch",
+  "set": "eval",
+  "group": "global_scope",
+  "split": "dev",
+  "act": "should_not",
+  "title": "범위 피치 + 다른 피치의 말 속도 · '어느 쪽이 나은지' — 지금 피치 먼저 읽고 범위를 바꿔 읽고, 피치끼리 비교하지 않음",
+  "baseline_type": "scope",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-yr",
+        "title": "연말 성과 공유 발표",
+        "takes": [
+          {
+            "take_id": "yr-t2",
+            "take_number": 2,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "result": {
+              "cpm": 320
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "yr-t3",
+            "take_number": 3,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "cpm": 318
+            },
+            "review": {
+              "dimensions": {},
+              "score": 76
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-05T19:07:00+09:00"
+      },
+      {
+        "pitch_id": "p-app",
+        "title": "신규 앱 런칭 발표",
+        "takes": [
+          {
+            "take_id": "app-t1",
+            "take_number": 1,
+            "started_at": "2026-11-01T19:00:00+09:00",
+            "completed_at": "2026-11-01T19:07:00+09:00",
+            "result": {
+              "cpm": 355
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "app-t2",
+            "take_number": 2,
+            "started_at": "2026-11-04T19:00:00+09:00",
+            "completed_at": "2026-11-04T19:07:00+09:00",
+            "result": {
+              "cpm": 362,
+              "issues": [
+                [
+                  "PACE_FAST",
+                  2,
+                  true
+                ],
+                [
+                  "PACE_FAST",
+                  3,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY"
+              },
+              "score": 67
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-04T19:07:00+09:00"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-yr"
+    }
+  },
+  "turns": [
+    {
+      "message": "지금 보는 연말 성과 공유 발표 말고 '신규 앱 런칭 발표'도 같이 열어서, 두 발표의 말 속도가 각각 어땠는지 보고 어느 쪽이 더 나은지도 알려 주세요.",
+      "page_take_id": "yr-t3"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "fetch-pitch",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "propose:FETCH_PITCH:AUTO",
+          "exec:FETCH_PITCH:OK"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "current-first",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          [
+            "tool:get_take_report:OK",
+            "exec:FETCH_PITCH:OK"
+          ],
+          [
+            "tool:list_takes:OK",
+            "exec:FETCH_PITCH:OK"
+          ],
+          [
+            "tool:compare_takes:OK",
+            "exec:FETCH_PITCH:OK"
+          ]
+        ],
+        "metric": "path",
+        "note": "6-5: 지금 범위 피치의 기록을 먼저 읽고 다른 피치로 바꾼다"
+      },
+      {
+        "check_id": "scope-changed",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "p-app",
+        "path": "scope_pitch_id"
+      },
+      {
+        "check_id": "scope-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "name": "ACTION_SUCCESS.FETCH_PITCH",
+          "fields": {
+            "title": "신규 앱 런칭 발표"
+          }
+        },
+        "grader": "template"
+      },
+      {
+        "check_id": "no-cross-compare",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.CROSS_PITCH_NO_COMPARE",
+        "grader": "template"
+      },
+      {
+        "check_id": "app-fast",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "(빠르|빨랐|빨라|빠른|빠름)",
+        "grader": "regex",
+        "note": "신규 앱 런칭 발표 362(범위 위)는 빠름"
+      },
+      {
+        "check_id": "no-ranking",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "(더 나아요|더 낫습니다|더 낫네요|더 나은 편|더 좋아요|더 안정적이에요|더 잘했)",
+        "grader": "regex"
+      },
+      {
+        "check_id": "no-confirmed-line",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "기록 \\d+건을 확인",
+        "grader": "regex",
+        "note": "TARGET 3(고침): '확인한 것' 줄은 넣지 않는다"
+      }
+    ]
+  }
+}

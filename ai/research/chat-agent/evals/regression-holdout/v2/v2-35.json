@@ -1,0 +1,131 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-35",
+  "set": "eval",
+  "group": "failure",
+  "split": "dev",
+  "act": "should",
+  "title": "[이어서 확인 · 대화 기록] 앞 답이 시간 한도 안내로 끝남, 이번 차례엔 장애 없음 — 남은 3장 말 속도 · 4장 청중 시선을 다시 읽어 DONE",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-farm",
+        "title": "지역 농산물 직거래 장터 설명회",
+        "takes": [
+          {
+            "take_id": "fm-t1",
+            "take_number": 1,
+            "started_at": "2026-11-01T17:00:00+09:00",
+            "completed_at": "2026-11-01T17:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "fm-t2",
+            "take_number": 2,
+            "started_at": "2026-11-04T17:00:00+09:00",
+            "completed_at": "2026-11-04T17:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "fm-t3",
+            "take_number": 3,
+            "started_at": "2026-11-08T17:00:00+09:00",
+            "completed_at": "2026-11-08T17:07:00+09:00",
+            "result": {
+              "cpm": [
+                318,
+                344,
+                296,
+                331
+              ],
+              "audience": [
+                0.6,
+                0.55,
+                0.5,
+                0.36
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-08T17:00:00+09:00"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-farm",
+      "history": [
+        {
+          "role": "user",
+          "text": "Take 3에서 1장, 3장 말 속도랑 마지막 장 청중 시선 비율 알려 줘"
+        },
+        {
+          "role": "assistant",
+          "text": "Take 3 1장 말 속도는 분당 318자예요.\n시간이나 처리 한도에 닿아 확인한 내용까지만 알려드릴게요."
+        }
+      ]
+    }
+  },
+  "turns": [
+    {
+      "message": "이어서 확인해 줘",
+      "page_take_id": "fm-t3"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "done",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "metric": "replan"
+      },
+      {
+        "check_id": "reread",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:get_take_report:*",
+          "final:DONE"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "slide3-cpm",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": 296,
+        "grader": "number",
+        "derive": "fm-t3:SPEED.cpm@3"
+      },
+      {
+        "check_id": "slide4-gaze",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": 0.36,
+        "grader": "number",
+        "derive": "fm-t3:GAZE.audience_ratio@4"
+      },
+      {
+        "check_id": "no-same-reason",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "같은 이유로 더 확인할 수 없어요",
+        "grader": "regex",
+        "note": "TARGET 3: 이번 실행이 남은 항목을 마저 확인해 해소되면 보통 DONE"
+      }
+    ]
+  },
+  "notes": "history 쪽: 직전 어시스턴트 답은 시간 한도 안내로 끝난 PARTIAL(1장 318 은 fm-t3 값). 이번 차례엔 장애가 없어 정상 해소."
+}

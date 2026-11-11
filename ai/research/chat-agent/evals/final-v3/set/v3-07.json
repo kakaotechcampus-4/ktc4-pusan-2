@@ -1,0 +1,103 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-07",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should_not",
+  "title": "말 속도가 측정되지 않은 Take 2 의 장별 분당 글자 수 — 값을 지어내지 않고 '측정 안 됨'을 단계와 답에 보인다",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-farm",
+        "title": "스마트팜 견학 안내 발표",
+        "last_practiced_at": "2026-11-07T10:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "sf-t1",
+            "take_number": 1,
+            "started_at": "2026-11-03T10:00:00+09:00",
+            "completed_at": "2026-11-03T10:07:00+09:00",
+            "result": {
+              "cpm": [
+                300,
+                305,
+                298,
+                302
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 73
+            }
+          },
+          {
+            "take_id": "sf-t2",
+            "take_number": 2,
+            "started_at": "2026-11-07T10:00:00+09:00",
+            "completed_at": "2026-11-07T10:07:00+09:00",
+            "result": {
+              "unmeasured": {
+                "SPEED": "NO_SPEECH_DETECTED"
+              }
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "NOT_EVALUABLE"
+              },
+              "score": 72
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-farm"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 2에서 장마다 말 빠르기가 분당 몇 글자씩이었는지 장별로 쭉 정리해 줄래요?",
+      "page_take_id": "sf-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "read-report",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:get_take_report:*",
+          "final:DONE"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "plan-unmeasured",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "측정 안 됨",
+        "grader": "regex",
+        "metric": "path",
+        "note": "v1 TARGET 1 상황 사실 낱말"
+      },
+      {
+        "check_id": "unmeasured-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.UNMEASURED",
+        "grader": "template",
+        "note": "6-1 7번: 물은 영역이 측정 안 됨이면 코드가 붙인다(L1-17)"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

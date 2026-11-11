@@ -666,3 +666,158 @@ def test_call_cap_keeps_one_chat_call_within_the_core_answer_share(
     assert tool_role(app_settings=s).timeout_seconds == global_seconds  # 상한을 안 주면 설정 그대로
     llm = tool_llm(pool_size=2, app_settings=s, max_call_seconds=12.0)
     assert llm is not None and llm._role.timeout_seconds == expected  # type: ignore[attr-defined]
+
+
+def test_provider_extra_content_is_kept_and_calls_without_index_are_split_by_id() -> None:
+    """Gemini 호환 API 는 도구 호출 조각에 index 없이 `extra_content`(thought_signature)를
+    붙여 보낸다. 그 칸을 호출에 남겨 다음 차례에 돌려줄 수 있게 하고, index 없는 조각은
+    호출 id 로 나눈다(Issue #1194 모델 비교 — 없으면 다음 호출이 400)."""
+    sig = {"google": {"thought_signature": "c2ln"}}
+    first = NS(
+        index=None,
+        id="call-1",
+        function=NS(name="get_goals", arguments="{}"),
+        model_extra={"extra_content": sig},
+    )
+    second = NS(
+        index=None, id="call-2", function=NS(name="list_takes", arguments="{}"), model_extra={}
+    )
+    tool_chunk = NS(
+        model="google/gemini-4-argon",
+        choices=[
+            NS(delta=NS(content=None, refusal=None, tool_calls=[first, second]), finish_reason=None)
+        ],
+        usage=None,
+    )
+    llm, _, _ = make([[tool_chunk, chunk(finish="tool_calls"), chunk(usage=(10, 5))]])
+    r = llm.invoke(req(), always)
+    assert [(c.id, c.name, c.extra) for c in r.tool_calls] == [
+        ("call-1", "get_goals", sig),
+        ("call-2", "list_takes", None),
+    ]
+
+
+def test_gemini_requests_fill_missing_thought_signatures_and_others_are_unchanged() -> None:
+    """Gemini 모델이면 서명 칸이 없는 assistant 도구 호출(코드가 넣은 호출 · 되살린 호출)에
+    공식 대체 서명을 채우고, 받은 칸은 그대로 둔다. 다른 모델의 요청 메시지는 바꾸지 않는다
+    (Issue #1194 모델 비교)."""
+    from pitch_coach_ai.common.llm import (
+        GEMINI_DUMMY_SIGNATURE,
+        _is_gemini,
+        _with_gemini_signatures,
+    )
+
+    real = {"google": {"thought_signature": "c2ln"}}
+    msgs = [
+        {"role": "user", "content": "q"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "pf-1",
+                    "type": "function",
+                    "function": {"name": "get_goals", "arguments": "{}"},
+                },
+                {
+                    "id": "g-1",
+                    "type": "function",
+                    "function": {"name": "list_takes", "arguments": "{}"},
+                    "extra_content": real,
+                },
+            ],
+        },
+        {"role": "tool", "tool_call_id": "pf-1", "content": "{}"},
+    ]
+    got = _with_gemini_signatures(msgs)
+    calls = got[1]["tool_calls"]
+    assert calls[0]["extra_content"]["google"]["thought_signature"] == GEMINI_DUMMY_SIGNATURE
+    assert calls[1]["extra_content"] == real
+    assert "extra_content" not in msgs[1]["tool_calls"][0]  # 원본은 그대로
+    assert _is_gemini("google/gemini-4-argon") and not _is_gemini("openai/gpt-6-luna")
+
+
+def _tool_chunk(*pieces: NS) -> NS:
+    return NS(
+        model="google/gemini-4-argon",
+        choices=[
+            NS(delta=NS(content=None, refusal=None, tool_calls=list(pieces)), finish_reason=None)
+        ],
+        usage=None,
+    )
+
+
+def test_piece_without_index_or_id_is_rejected_when_several_calls_are_open() -> None:
+    """index · id 가 없는 조각이 호출 여럿 뒤에 오면 어느 호출의 것인지 모른다.
+    마지막 호출에 붙여 잘못된 인자로 실행하지 않고 무효 출력으로 거절한다
+    (6-11, Issue #1194 코드 검수)."""
+    a = NS(index=None, id="call-a", function=NS(name="get_goals", arguments=""), model_extra={})
+    b = NS(index=None, id="call-b", function=NS(name="list_takes", arguments="{}"), model_extra={})
+    tail = NS(index=None, id=None, function=NS(name=None, arguments="{}"), model_extra={})
+    llm, fake, _ = make(
+        [[_tool_chunk(a, b), _tool_chunk(tail), chunk(finish="tool_calls"), chunk(usage=(10, 5))]]
+    )
+    with pytest.raises(LlmInvalidOutput) as ei:
+        llm.invoke(req(), always)
+    assert ei.value.cause == "ambiguous_tool_call"
+    assert len(fake.kwargs) == 1
+
+
+def test_piece_without_index_or_id_continues_the_only_open_call() -> None:
+    """모은 호출이 하나뿐이면 index · id 없는 조각은 그 호출의 이어지는 인자다."""
+    a = NS(
+        index=None, id="call-a", function=NS(name="get_goals", arguments='{"x":'), model_extra={}
+    )
+    tail = NS(index=None, id=None, function=NS(name=None, arguments="1}"), model_extra={})
+    llm, _, _ = make(
+        [[_tool_chunk(a), _tool_chunk(tail), chunk(finish="tool_calls"), chunk(usage=(10, 5))]]
+    )
+    r = llm.invoke(req(), always)
+    assert [(c.id, c.args) for c in r.tool_calls] == [("call-a", {"x": 1})]
+
+
+def test_indexed_calls_run_in_index_order_even_if_they_arrive_out_of_order() -> None:
+    """index 가 있는 호출은 받은 순서가 아니라 index 순서로 실행한다
+    (공급자 호환 고침 전과 같음, Issue #1194 코드 검수)."""
+    one = NS(index=1, id="call-1", function=NS(name="list_takes", arguments="{}"), model_extra={})
+    zero = NS(index=0, id="call-0", function=NS(name="get_goals", arguments="{}"), model_extra={})
+    llm, _, _ = make(
+        [[_tool_chunk(one), _tool_chunk(zero), chunk(finish="tool_calls"), chunk(usage=(10, 5))]]
+    )
+    r = llm.invoke(req(), always)
+    assert [c.id for c in r.tool_calls] == ["call-0", "call-1"]
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"google": {}},
+        {"google": {"thought_signature": None}},
+        {"google": {"thought_signature": "", "other": 1}, "vendor": {"k": "v"}},
+        {},
+    ],
+)
+def test_gemini_fills_empty_signatures_and_keeps_other_provider_fields(extra: dict) -> None:
+    """칸이 있어도 서명 값이 비었으면 대체 서명을 채우고, 공급자가 붙인 다른 칸은 그대로 둔다.
+    입력은 바꾸지 않는다."""
+    import json as _json
+
+    from pitch_coach_ai.common.llm import GEMINI_DUMMY_SIGNATURE, _with_gemini_signatures
+
+    call = {
+        "id": "g-1",
+        "type": "function",
+        "function": {"name": "get_goals", "arguments": "{}"},
+        "extra_content": extra,
+    }
+    msgs = [{"role": "assistant", "content": "", "tool_calls": [call]}]
+    before = _json.dumps(msgs, sort_keys=True)
+    got = _with_gemini_signatures(msgs)[0]["tool_calls"][0]["extra_content"]
+    assert got["google"]["thought_signature"] == GEMINI_DUMMY_SIGNATURE
+    assert {k: v for k, v in got["google"].items() if k != "thought_signature"} == {
+        k: v for k, v in (extra.get("google") or {}).items() if k != "thought_signature"
+    }
+    assert {k: v for k, v in got.items() if k != "google"} == {
+        k: v for k, v in extra.items() if k != "google"
+    }
+    assert _json.dumps(msgs, sort_keys=True) == before

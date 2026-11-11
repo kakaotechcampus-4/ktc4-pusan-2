@@ -1,0 +1,145 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-fail-campus-fetch-deleted",
+  "set": "eval",
+  "group": "failure",
+  "split": "dev",
+  "act": "should",
+  "title": "가져오기 직전에 Take 3 이 지워짐 — 가져오지 못했다고 말하고 다시 가져오지 않음, 숫자를 만들지 않음",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-camp",
+        "title": "캠퍼스 투어 안내 발표",
+        "takes": [
+          {
+            "take_id": "camp-t3",
+            "take_number": 3,
+            "started_at": "2026-10-30T19:00:00+09:00",
+            "completed_at": "2026-10-30T19:07:00+09:00",
+            "result": {
+              "cpm": [
+                305,
+                347,
+                300,
+                310
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "camp-t4",
+            "take_number": 4,
+            "started_at": "2026-11-01T19:00:00+09:00",
+            "completed_at": "2026-11-01T19:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "camp-t5",
+            "take_number": 5,
+            "started_at": "2026-11-03T19:00:00+09:00",
+            "completed_at": "2026-11-03T19:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "camp-t6",
+            "take_number": 6,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-camp"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 3 기록을 열어서 2장 말 속도가 어땠는지 확인해 줄래요?",
+      "page_take_id": "camp-t6",
+      "faults": [
+        {
+          "kind": "delete_before_action",
+          "action": "FETCH_TAKE",
+          "target": "camp-t3"
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "fetch-failed",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "propose:FETCH_TAKE:AUTO"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-refetch",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "propose:FETCH_TAKE:*",
+          "propose:FETCH_TAKE:*"
+        ],
+        "metric": "replan",
+        "note": "가져오기에 실패한 Take 는 다시 내지 않는다(6-1 · 5-8)"
+      },
+      {
+        "check_id": "fetch-failed-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.TAKE_FETCH_FAILED",
+        "grader": "template",
+        "metric": "replan"
+      },
+      {
+        "check_id": "no-deleted-value",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "347",
+        "grader": "number",
+        "derive": "camp-t3:SPEED.cpm@2"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "one_of",
+        "expect": [
+          "DONE",
+          "PARTIAL"
+        ],
+        "path": "status"
+      },
+      {
+        "check_id": "fetch-failed-record",
+        "observe": "actions_executed",
+        "compare": "contains",
+        "expect": {
+          "type": "FETCH_TAKE",
+          "status": "FAILED",
+          "error_code": "NOT_FOUND"
+        },
+        "path": "items"
+      }
+    ]
+  }
+}

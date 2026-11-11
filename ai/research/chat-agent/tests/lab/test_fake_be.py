@@ -233,6 +233,7 @@ def test_fm_L1_31_budget_and_turn_count_accumulate_across_resumes() -> None:
 
 
 @pytest.mark.no_prefetch  # 모델이 먼저 읽는 대본
+@pytest.mark.model_signals
 def test_fm_L2_31_budget_reset_on_resume_is_rejected() -> None:
     """이어 부르기마다 누적량을 0 으로 되돌려 보내면 409 이고 모델을 더 부르지 않는다."""
     llm = F.FakeLlm(compare_with_fetch_script()[:3])
@@ -258,6 +259,7 @@ def test_fm_L2_31_same_failed_action_twice_stops() -> None:
 
 
 @pytest.mark.no_prefetch  # 모델이 먼저 읽는 대본
+@pytest.mark.model_signals
 def test_fm_L5_16_action_time_counts_toward_the_turn_budget() -> None:
     """BE 행동 시간이 누적 시간에 들어가 120초를 넘으면 이어 부른 호출은 모델 없이 끝난다(8-3)."""
     llm = F.FakeLlm(compare_with_fetch_script()[:3])
@@ -833,6 +835,7 @@ def test_measurement_objection_runs_no_reassess() -> None:
 
 
 @pytest.mark.no_prefetch  # 모델이 먼저 읽는 대본
+@pytest.mark.model_signals
 def test_fm_L4_38_take_deleted_while_waiting_stops_before_model() -> None:
     """가져온 Take 가 이어 부르기 전에 지워지면 removed_sources 로 알리고, AI는 모델 없이 끝낸다."""
     llm = F.FakeLlm(compare_with_fetch_script()[:3])
@@ -957,6 +960,7 @@ def test_fm_L6_10_new_take_supersedes_prior_turn_assessment_by_id() -> None:
 
 @pytest.mark.no_prefetch  # 모델이 먼저 읽는 대본
 @pytest.mark.parametrize(("keep_previous", "status"), [(True, "DONE"), (False, "FAILED")])
+@pytest.mark.model_signals
 def test_fm_L1_33_resume_on_other_instance_after_key_rotation(
     keep_previous: bool, status: str
 ) -> None:

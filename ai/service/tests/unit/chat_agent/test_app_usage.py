@@ -66,7 +66,8 @@ def test_usage_unanswered_alone_is_done_with_the_fixed_sentence() -> None:
     )
     _, data, llm = _run(answer, fixes=[])
     assert data["status"] == "DONE"
-    assert _texts(data) == [("SYSTEM", USAGE)]
+    # 사용법 자료 없음 문장 뒤에 기록 질문으로 이어 가는 다음 걸음(Issue #1194 4-E)
+    assert _texts(data) == [("SYSTEM", USAGE), ("SYSTEM", templates.SystemText.NEXT_REVIEW.value)]
     assert [c for c in llm.calls if c.purpose == "FIX"] == []
 
 
@@ -97,7 +98,10 @@ def test_out_of_scope_refusal_is_unaffected() -> None:
     status, _, data = F.run_turn(F.request(user_message="평가 기준 괜찮은지 봐 줘"), llm)
     assert status == 200 and data is not None
     assert data["status"] == "REFUSED"
-    assert _texts(data) == [("SYSTEM", templates.scope_text("CONTENT_COACHING").value)]
+    assert _texts(data) == [
+        ("SYSTEM", templates.scope_text("CONTENT_COACHING").value),
+        ("SYSTEM", templates.SystemText.NEXT_REVIEW.value),
+    ]
 
 
 def test_script_helpers_import() -> None:

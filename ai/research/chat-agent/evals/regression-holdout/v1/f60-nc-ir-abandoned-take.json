@@ -1,0 +1,134 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-nc-ir-abandoned-take",
+  "set": "eval",
+  "group": "not_comparable",
+  "split": "dev",
+  "act": "should",
+  "title": "중간에 그만둔 Take 4 와 Take 5 군더더기 비교 요청 — 비교 불가(끝까지 안 한 Take)를 보이고 까닭을 말하거나 다른 Take 로 바꿈",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-ir",
+        "title": "시리즈A 투자 IR",
+        "takes": [
+          {
+            "take_id": "ir-t3",
+            "take_number": 3,
+            "started_at": "2026-11-01T19:00:00+09:00",
+            "completed_at": "2026-11-01T19:07:00+09:00",
+            "result": {
+              "filler_per_min": 3.6,
+              "filler_count": 15
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY"
+              },
+              "score": 66
+            }
+          },
+          {
+            "take_id": "ir-t4",
+            "take_number": 4,
+            "status": "ABANDONED",
+            "end_reason": "ABANDONED",
+            "visited_slides": [
+              1,
+              2
+            ],
+            "started_at": "2026-11-03T19:00:00+09:00",
+            "completed_at": null,
+            "result": {
+              "filler_per_min": 2.0,
+              "filler_count": 4
+            },
+            "review": null
+          },
+          {
+            "take_id": "ir-t5",
+            "take_number": 5,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "filler_per_min": 2.7,
+              "filler_count": 11
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "STABLE"
+              },
+              "score": 73
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-ir"
+    }
+  },
+  "turns": [
+    {
+      "message": "투자 IR 리허설에서 Take 4와 Take 5를 나란히 놓고 보면, '음, 어' 같은 군더더기가 덜 나왔는지 궁금해요.",
+      "page_take_id": "ir-t5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "not-comparable-fact",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:compare_takes:OK",
+          "decision:NOT_COMPARABLE:FACT_SHOWN:CODE"
+        ],
+        "metric": "replan",
+        "note": "README: FACT_SHOWN:CODE 는 신호를 낸 도구 사건 바로 뒤"
+      },
+      {
+        "check_id": "plan-fact",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "비교 불가.*끝까지 안 한 Take",
+        "grader": "regex",
+        "metric": "replan",
+        "note": "TARGET 1: 비교 불가 + 까닭 낱말이 실행한 단계 글에 보인다"
+      },
+      {
+        "check_id": "reason-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "끝까지 한 발표가 아니",
+        "grader": "regex"
+      },
+      {
+        "check_id": "no-outcome-take4",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "Take 4[^.\\n]*(줄었|늘었|좋아졌|나빠졌|증가했|감소했)",
+        "grader": "regex"
+      },
+      {
+        "check_id": "compare-before-answer",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:compare_takes:OK",
+          "final:[!N]*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "대안(Take 3 ↔ 5, 3.6 → 2.7)으로 바꾸는 것과 까닭만 말하는 것 모두 맞다(RULES 2). 대안을 골랐는지는 채점하지 않는다."
+}
