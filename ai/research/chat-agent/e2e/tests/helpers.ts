@@ -66,6 +66,16 @@ export async function login(context: BrowserContext, t: Seeded): Promise<void> {
     { name: 'refresh_token', value: t.refresh_token, domain: 'localhost', path: '/api/auth', httpOnly: true, sameSite: 'Lax' },
     { name: 'csrf_token', value: t.csrf_token, domain: 'localhost', path: '/', sameSite: 'Lax' },
   ]);
+  // 개인정보 처리 동의: FE 는 동의 전에는 서비스 화면 · 채팅 런처를 띄우지 않고, 동의 기록을 이 브라우저의 localStorage 에
+  // 둔다(`frontend/src/shared/lib/privacyConsent.ts`, 키 `pitchcoach.privacyConsent.v<판>.<사용자 id>`). 시드 사용자는 동의한
+  // 것으로 둔다. FE 가 안내문 판(`PRIVACY_CONSENT_VERSION`)을 올리면 여기 판도 올린다
+  await context.addInitScript((uid: string) => {
+    try {
+      localStorage.setItem(`pitchcoach.privacyConsent.v1.${uid}`, new Date().toISOString());
+    } catch {
+      // 저장소를 못 쓰면 FE 가 동의 창을 띄운다(시험이 그 자리에서 멈춘다)
+    }
+  }, t.user_id);
 }
 
 /** 대화창의 접근성 이름 — FE 화면 이름(새미나이, 기능 문서 12-4)이 바뀌면 여기만 고친다 */
