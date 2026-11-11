@@ -5,7 +5,7 @@ import { Button } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Panel';
 import { InfoPage } from '@/shared/ui/InfoPage';
 import { deleteLocalRecords } from '@/shared/lib/localData';
-import { useWithdraw } from '@/shared/api/useWithdraw';
+import { useWithdraw } from './api/useWithdraw';
 import { useSession } from './useSession';
 
 /**

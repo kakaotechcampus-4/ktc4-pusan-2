@@ -1,4 +1,4 @@
-// 제품 `frontend/src/features/pitch/HomeSurveyNotice.tsx`의 동의 창에서 복사해 시작했다. 설계서가 관리한다.
+// 제품 `frontend/src/features/pitch/home/HomeSurveyNotice.tsx`의 동의 창에서 복사해 시작했다. 설계서가 관리한다.
 // 서버에 보내지 않는다. 동의는 바로 onAgree, 나중에 · Esc는 onClose다.
 import { useId, useLayoutEffect, useRef } from 'react';
 import { Button } from '../Button';

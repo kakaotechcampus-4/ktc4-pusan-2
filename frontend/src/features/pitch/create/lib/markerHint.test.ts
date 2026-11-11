@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { scanSlideMarkers } from '@/shared/lib/slideMarkers';
+import { scanSlideMarkers } from './slideMarkers';
 import { joinScriptBlocks } from './draft';
 import {
   mappingEditNotice,

@@ -58,8 +58,8 @@ const fixture = vi.hoisted(() => ({
   /** 화면이 useMicLevel 에 넘긴 옵션. 무음 경고를 언제부터 세는지(silenceFrom)를 봅니다 */
   micOptions: null as { silenceFrom?: () => number | null } | null,
 }));
-vi.mock('@/shared/api/rawDataConsent', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/shared/api/rawDataConsent')>()),
+vi.mock('../api/rawDataConsent', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/rawDataConsent')>()),
   useEnsureRawDataConsent: () => fixture.ensureConsent,
 }));
 vi.mock('./activeTake', () => ({

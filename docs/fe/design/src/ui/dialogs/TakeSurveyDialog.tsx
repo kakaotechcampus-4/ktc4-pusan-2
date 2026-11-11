@@ -1,4 +1,4 @@
-// 제품 `frontend/src/features/report/TakeSurvey.tsx`의 설문 창에서 복사해 시작했다. 설계서가 관리한다.
+// 제품 `frontend/src/features/report/report/TakeSurvey.tsx`의 설문 창에서 복사해 시작했다. 설계서가 관리한다.
 // 서버에 보내지 않는다. 보내기는 바로 onSent, 나중에 · Esc는 onClose다.
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '../Button';

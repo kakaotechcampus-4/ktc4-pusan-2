@@ -1,6 +1,6 @@
 import { Link } from 'react-router';
 import { FlipNumber } from './FlipNumber';
-import { countdownParts, LAUNCH_AT, useLaunchStatus } from '@/shared/api/launch';
+import { countdownParts, LAUNCH_AT, useLaunchStatus } from './launch';
 
 export function LaunchStart({
   className,

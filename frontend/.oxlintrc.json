@@ -20,7 +20,7 @@
   },
   "overrides": [
     {
-      "files": ["src/app/**", "src/mocks/**", "src/main.tsx"],
+      "files": ["src/app/**", "src/dev/**", "src/mocks/**", "src/main.tsx"],
       "rules": {
         "no-restricted-imports": "off"
       }

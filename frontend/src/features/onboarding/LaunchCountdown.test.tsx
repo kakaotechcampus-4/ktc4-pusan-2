@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { LaunchCountdown, LaunchStart } from './LaunchCountdown';
 import { LaunchGate } from '@/app/LaunchGate';
-import { LAUNCH_AT } from '@/shared/api/launch';
+import { LAUNCH_AT } from './launch';
 
 let container: HTMLDivElement;
 let root: Root;

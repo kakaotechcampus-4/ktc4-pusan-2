@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type RefObject } from 'react';
-import { scanSlideMarkers } from '@/shared/lib/slideMarkers';
+import { scanSlideMarkers } from '../lib/slideMarkers';
 import { useCreateStore } from '../createStore';
 import { CaretIcon, CheckIcon, DocIcon, LinkIcon } from '../icons';
 import {

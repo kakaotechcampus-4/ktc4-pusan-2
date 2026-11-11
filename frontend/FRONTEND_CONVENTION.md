@@ -46,7 +46,8 @@
 ```
 src/
   app/        라우팅
-  features/   도메인 — auth · onboarding · pitch · rehearsal · report
+  dev/        /dev/* 개발용 화면. app 처럼 features 를 가져다 쓴다
+  features/   도메인 — auth · chat · info · onboarding · pitch · rehearsal · report
   shared/     ui · lib · api. 도메인을 모른다
   workers/    시선 워커. 메인 스레드에서 격리
   types/      API 타입. 런타임 코드가 없다 (잎사귀)
@@ -58,6 +59,8 @@ src/
 `features → shared → types` 한 방향이다. 역방향은 없다.
 
 - **`features/` 끼리 서로 import 하지 않는다.** 공유가 필요해지면 `shared/` 로 올린다.
+- 한 기능만 쓰는 코드는 그 기능 안에 둔다. 서버 호출이면 `features/<기능>/api/`, 화면 조각이면 그 기능 폴더다.
+  두 번째 기능이 쓰기 시작할 때 `shared/` 로 올린다 (`app/` · `dev/` · `mocks/` 는 셈에 넣지 않는다).
 - `shared/` 는 특정 도메인을 알지 못한다. `@/features/...` 를 import 하면 방향이 뒤집힌 것이다.
 - `workers/` 는 `shared/` 를 참조하지 않는다. 타입만 가져와도 import 경로가 그렇게 생기면
   나중에 누군가 같은 경로에서 런타임 코드를 가져오고, 그 순간 워커 번들에

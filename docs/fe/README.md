@@ -27,6 +27,7 @@
 | [대화형 에이전트 (FE)](features/chat-agent.md) | 대화창 화면 흐름 · 상태 · 파일 구성 · BE 경로 · 조회 간격과 재시도 · 안내 문구 · 남은 한계 (기준은 AI chat-agent.md) | FE |
 | [출시 카운트다운](launch-countdown.md) | #541 기기 시간 기준 자동 오픈·BE 역할·빌드 설정 | FE |
 | [Pitch / Take 데이터 계약 (#570)](pitch-take-contract-570.md) | FE 불일치 처리와 BE 선행 조건 · 검증 결과 | FE |
+| [로그인 인증 연동](auth.md) | P11 로그인 · 토큰 처리 | FE |
 | [화면 설계서](design/README.md) | 제품과 따로 도는 React 화면 시안 · 상태 · 흐름, 제품과의 차이 | FE |
 | [화면 설계서 명명·분류 규칙](design/NAMING.md) | 화면 이름 · 그룹 · 파일명 · 검토 시안 관리 기준 | FE |
 
@@ -67,9 +68,7 @@
 
 | 문서 | 담는 것 |
 |---|---|
-| [frontend/src/features/auth/README.md](../../frontend/src/features/auth/README.md) | 로그인 인증 연동 |
 | [frontend/src/vendor/gaze/README.md](../../frontend/src/vendor/gaze/README.md) | AI 시선 엔진 · Worker 복사본(여기서 고치지 않음)과 FE 원본 카메라 화면 |
-| [frontend/src/features/pitch/HOME_API.md](../../frontend/src/features/pitch/HOME_API.md) | 홈 화면이 쓰는 API |
 | [frontend/src/shared/ui/README.md](../../frontend/src/shared/ui/README.md) | 공용 컴포넌트 |
 | [frontend/public/models/README.md](../../frontend/public/models/README.md) | 시선 엔진 모델 자산(커밋하지 않고 빌드 때 받음) |
 | [frontend/public/worklets/README.md](../../frontend/public/worklets/README.md) | AudioWorklet 파일(번들러를 거치지 않는 평범한 JS) |

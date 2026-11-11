@@ -6,13 +6,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { usePdfDocument } from '@/shared/lib/usePdfDocument';
-import { parseStandards } from '@/shared/api/standards';
+import { parseStandards } from '../api/standards';
 import { createPitch, updatePitch } from '@/shared/api/pitch';
 import { PitchCreatePage } from './PitchCreatePage';
 import { useCreateStore } from './createStore';
 import { takeScreenSnapshot } from '@/shared/lib/chatScreen';
 
-vi.mock('@/shared/api/standards', () => ({ parseStandards: vi.fn(), saveStandards: vi.fn() }));
+vi.mock('../api/standards', () => ({ parseStandards: vi.fn(), saveStandards: vi.fn() }));
 vi.mock('@/shared/api/useLogout', () => ({ useLogout: () => ({ mutate: vi.fn() }) }));
 vi.mock('@/shared/lib/usePdfDocument', () => ({ usePdfDocument: vi.fn(() => null) }));
 vi.mock('@/shared/ui/PdfPage', () => ({ PdfPage: () => null }));

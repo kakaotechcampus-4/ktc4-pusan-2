@@ -1,4 +1,4 @@
-import { fetchActiveTake, replaceTake } from '@/shared/api/take';
+import { fetchActiveTake, replaceTake } from '../api/take';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import type { ActiveTake } from '@/types/take';
 

@@ -1,4 +1,4 @@
-// 제품 `frontend/src/features/pitch/DeletePitchDialog.tsx`에서 복사해 시작했다. 설계서가 관리한다.
+// 제품 `frontend/src/features/pitch/home/DeletePitchDialog.tsx`에서 복사해 시작했다. 설계서가 관리한다.
 import { useId, useLayoutEffect, useRef } from 'react';
 import { Button } from '../Button';
 
