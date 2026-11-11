@@ -1,0 +1,12 @@
+{
+  "what": "독립 평가 v3 봉인 기준선(고치기 전, RULES 6절). 결과 폴더는 저장소 밖 보관 폴더에 두고 여기에는 해시(sealed.sha256)와 실행 정보만 적는다",
+  "code_commit": "00b1ec80",
+  "freeze_commit": "500dc07f",
+  "feature_version": "chat_agent-0.13.0",
+  "runs": {
+    "luna": {"command": "evals --dir evals/final-v3/set --set all --judge --workers 4 --search hybrid", "runs": 120, "exit": 0, "provider_abort": 0},
+    "terra": {"command": "evals --bundle OPENAI_TERRA --dir evals/final-v3/set --set all --judge --workers 4 --search hybrid", "runs": 120, "exit": 0, "provider_abort": 0},
+    "baseline": {"command": "evals --baseline --dir evals/final-v3/set --set all --workers 4 --search hybrid", "runs": 120, "exit": 0, "provider_abort": 0}
+  },
+  "date": "2026-11-11"
+}
