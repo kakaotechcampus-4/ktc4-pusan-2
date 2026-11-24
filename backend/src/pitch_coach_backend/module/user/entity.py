@@ -15,6 +15,10 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "(test_consent_at IS NULL) = (test_consent_version IS NULL)",
             name="ck_users_test_consent",
         ),
+        CheckConstraint(
+            "(privacy_consent_at IS NULL) = (privacy_consent_version IS NULL)",
+            name="ck_users_privacy_consent",
+        ),
     )
 
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
@@ -30,6 +34,11 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # 그 안내문의 버전이다. 안내문이 바뀌면 FE 가 새 버전으로 다시 받는다
     test_consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     test_consent_version: Mapped[int | None] = mapped_column(Integer)
+    privacy_consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    privacy_consent_version: Mapped[int | None] = mapped_column(Integer)
+    chat_view_consent: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     # First Take 튜토리얼 리포트를 받은 시각. 계정당 한 번만 받는다 — 샘플 발표를 지워도 남아서
     # 다시 만든 샘플 발표에서도 연습을 시작하지 못한다
     tutorial_report_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
